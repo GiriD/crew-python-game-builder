@@ -49,26 +49,108 @@ review_task:
     - Any suggestions for enhancements
   agent: qa_engineer_agent
 
+ui_design_task:
+  description: >
+    Create comprehensive UI/UX design specifications for the game: {game}
+    
+    Design requirements:
+    - Professional color palette with hex codes
+    - Typography specifications (fonts, sizes, styles)
+    - Layout designs for all game screens (menu, gameplay, game over)
+    - Animation specifications and transitions
+    - Visual effects and particle system designs
+    - Icon and sprite design guidelines
+    - Accessibility considerations
+    - Mobile-responsive design principles
+    
+    Provide detailed visual specifications that the developer can implement.
+  expected_output: >
+    Comprehensive UI/UX design document including:
+    - Color palette with specific hex codes
+    - Typography system specifications
+    - Screen layout mockups and descriptions
+    - Animation and transition specifications
+    - Visual effects requirements
+    - Asset creation guidelines
+    - Implementation recommendations
+  agent: ui_ux_designer_agent
+
+audio_design_task:
+  description: >
+    Design comprehensive audio system for the game: {game}
+    
+    Audio requirements:
+    - Sound effect specifications for all game actions
+    - Background music recommendations and mood settings
+    - Audio feedback system design
+    - Volume control and audio settings
+    - Audio file format recommendations
+    - Timing and synchronization specifications
+    - Audio mixing and balance guidelines
+    
+    Provide detailed audio specifications for implementation.
+  expected_output: >
+    Complete audio design document including:
+    - Sound effect library specifications
+    - Background music requirements
+    - Audio implementation guidelines
+    - File format and quality recommendations
+    - Audio event mapping
+    - Performance considerations
+  agent: audio_engineer_agent
+
+architecture_task:
+  description: >
+    Design professional software architecture for the game: {game}
+    
+    Architecture requirements:
+    - Class design and relationships
+    - Design pattern recommendations
+    - Component system architecture
+    - Performance optimization strategies
+    - Code organization structure
+    - Scalability considerations
+    - Memory management patterns
+    - Error handling strategies
+    
+    Create a blueprint for professional game development.
+  expected_output: >
+    Software architecture document including:
+    - UML class diagrams (text-based)
+    - Design pattern specifications
+    - Component system design
+    - Performance optimization plan
+    - Code structure recommendations
+    - Scalability roadmap
+  agent: senior_engineer_agent
+
 evaluate_task:
   description: >
     As the Chief QA Engineer, provide a final evaluation of the game project based on:
     1. The original game specifications: {game}
     2. The code created by the Senior Engineer
-    3. The review conducted by the QA Engineer
+    3. The UI/UX design specifications
+    4. The audio design specifications
+    5. The software architecture design
+    6. The review conducted by the QA Engineer
     
     Your evaluation should determine:
     - Whether the project meets all requirements
     - If the code quality meets professional standards
     - Whether the game is ready for deployment/release
     - Final approval or recommendations for additional work
+    - Integration assessment of all components
     
     Provide executive-level feedback and make the final decision on project approval.
   expected_output: >
     Executive summary and final project evaluation including:
-    - Project approval status (APPROVED/NEEDS REVISION)
+    - Project approval status (APPROVED/NEEDS REVISION/EXCEPTIONAL)
     - Executive summary of the game project
+    - Integration assessment of all components
     - Key strengths and accomplishments
+    - Performance and scalability evaluation
     - Any remaining concerns or requirements
     - Final recommendations for next steps
     - Overall project quality assessment
+    - Market readiness evaluation
   agent: chief_qa_engineer_agent

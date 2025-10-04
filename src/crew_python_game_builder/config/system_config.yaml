@@ -1,0 +1,121 @@
+# Advanced CrewAI System Configuration
+# This file contains advanced settings for the game builder system
+
+crew_settings:
+  # Crew execution settings
+  max_iterations: 5
+  execution_timeout: 600  # 10 minutes per crew execution
+  memory_enabled: true
+  verbose_logging: true
+  
+  # Process configuration
+  process_type: "sequential"  # Options: sequential, hierarchical
+  parallel_execution: false
+  
+  # Output configuration
+  generate_timestamps: true
+  create_backups: true
+  compress_outputs: false
+
+agent_settings:
+  # Global agent settings
+  default_max_iter: 3
+  default_max_execution_time: 180  # 3 minutes per agent task
+  enable_memory: true
+  enable_delegation: false
+  
+  # Agent-specific overrides
+  senior_engineer:
+    max_iter: 5
+    max_execution_time: 300
+    temperature: 0.3  # Lower temperature for more consistent code
+    
+  ui_ux_designer:
+    temperature: 0.7  # Higher temperature for creativity
+    max_execution_time: 240
+    
+  audio_engineer:
+    temperature: 0.6
+    max_execution_time: 180
+    
+  qa_engineer:
+    temperature: 0.2  # Very low temperature for consistent reviews
+    max_execution_time: 240
+    
+  chief_qa_engineer:
+    temperature: 0.4
+    max_execution_time: 300
+    enable_delegation: true
+
+quality_settings:
+  # Code quality requirements
+  min_code_lines: 100
+  max_code_lines: 2000
+  require_docstrings: true
+  require_type_hints: false
+  enforce_pep8: true
+  
+  # Performance requirements
+  target_fps: 60
+  max_memory_usage_mb: 100
+  startup_time_ms: 3000
+  
+  # Testing requirements
+  require_error_handling: true
+  require_input_validation: true
+  require_game_loop: true
+  require_main_block: true
+
+output_settings:
+  # File generation settings
+  create_readme: true
+  create_requirements_txt: true
+  create_config_files: true
+  include_assets_folder: true
+  
+  # Documentation settings
+  generate_api_docs: false
+  include_code_comments: true
+  create_user_manual: true
+  include_development_notes: true
+
+performance_settings:
+  # System performance settings
+  enable_caching: true
+  cache_timeout: 3600  # 1 hour
+  max_concurrent_tasks: 3
+  memory_limit_mb: 512
+  
+  # Game performance targets
+  target_frame_rate: 60
+  max_startup_time: 5.0
+  memory_efficiency: "medium"  # Options: low, medium, high
+  
+integration_settings:
+  # External tool integration
+  enable_git_integration: true
+  auto_commit: false
+  create_branches: false
+  
+  # Asset management
+  auto_download_assets: false
+  asset_optimization: true
+  compress_images: false
+  
+  # Testing integration
+  run_syntax_check: true
+  run_performance_test: true
+  generate_test_report: true
+
+advanced_features:
+  # Experimental features
+  enable_ai_optimization: true
+  auto_refactoring: false
+  intelligent_debugging: true
+  code_generation_hints: true
+  
+  # Future features (not yet implemented)
+  multiplayer_support: false
+  web_export: false
+  mobile_optimization: false
+  vr_support: false

@@ -14,83 +14,55 @@ warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 def run():
     """
-    Run the crew to generate all example games.
+    Run the crew.
     """
+    # Replace with your inputs, it will automatically interpolate any tasks and agents information
     print("## Welcome to the Game Builder Crew")
-    print("## Generating ALL Example Games")
     print('-------------------------------')
 
     with open('src/crew_python_game_builder/config/gamedesign.yaml', 'r', encoding='utf-8') as file:
         examples = yaml.safe_load(file)
 
-    # Filter out only the example games (keys starting with 'example')
-    game_examples = {key: value for key, value in examples.items() if key.startswith('example')}
+    # Default to example2_snake if no argument provided, or use the argument
+    game_key = 'example8_carrom'  # Default game
+    if len(sys.argv) > 1:
+        # Check if the argument is a valid game key
+        arg_game_key = sys.argv[1]
+        if arg_game_key in examples:
+            game_key = arg_game_key
+        else:
+            # Try to find by name matching
+            for key, game in examples.items():
+                if key.startswith('example') and arg_game_key.lower() in game.get('name', '').lower():
+                    game_key = key
+                    break
+
+    inputs = {
+        'game': examples[game_key]
+    }
     
-    total_games = len(game_examples)
-    successful_games = []
-    failed_games = []
+    # Extract game name for folder organization
+    game_name = inputs['game'].get('name', 'unknown_game').lower().replace(' ', '_')
     
-    print(f"\nFound {total_games} games to generate:")
-    for key, game in game_examples.items():
-        print(f"- {game.get('name', key)}")
-    print("\n" + "="*50)
-    
-    for i, (example_key, game_data) in enumerate(game_examples.items(), 1):
-        game_name = game_data.get('name', 'unknown_game').lower().replace(' ', '_')
+    try:
+        crew_builder = CrewPythonGameBuilder(game_name=game_name)
+        result = crew_builder.crew().kickoff(inputs=inputs)
         
-        print(f"\n[{i}/{total_games}] Generating: {game_data.get('name', example_key)}")
-        print(f"Game Type: {game_data.get('type', 'Unknown')}")
-        print("-" * 40)
-        
-        inputs = {
-            'game': game_data
-        }
-        
-        try:
-            crew_builder = CrewPythonGameBuilder(game_name=game_name)
-            result = crew_builder.crew().kickoff(inputs=inputs)
-            
-            successful_games.append({
-                'name': game_data.get('name', example_key),
-                'folder': crew_builder.output_folder,
-                'key': example_key
-            })
-            
-            print(f"✅ SUCCESS: {game_data.get('name', example_key)} generated!")
-            print(f"   Files saved in: {crew_builder.output_folder}/")
-            
-        except Exception as e:
-            failed_games.append({
-                'name': game_data.get('name', example_key),
-                'key': example_key,
-                'error': str(e)
-            })
-            print(f"❌ FAILED: {game_data.get('name', example_key)}")
-            print(f"   Error: {str(e)}")
-    
-    # Final summary
-    print("\n" + "="*60)
-    print("## BATCH GENERATION COMPLETE!")
-    print("="*60)
-    print(f"Total games processed: {total_games}")
-    print(f"Successful: {len(successful_games)}")
-    print(f"Failed: {len(failed_games)}")
-    
-    if successful_games:
-        print(f"\n✅ SUCCESSFUL GAMES ({len(successful_games)}):")
-        for game in successful_games:
-            print(f"   • {game['name']}")
-            print(f"     📁 Folder: {game['folder']}/")
-            print(f"     🎮 Run: python {game['folder']}/generated_game.py")
-            print()
-    
-    if failed_games:
-        print(f"\n❌ FAILED GAMES ({len(failed_games)}):")
-        for game in failed_games:
-            print(f"   • {game['name']}: {game['error']}")
-            print()
-    
-    print("="*60)
+        print("\n\n########################")
+        print("## Game Builder Crew Completed!")
+        print("########################\n")
+        print(f"Generated files saved in the '{crew_builder.output_folder}' folder:")
+        print("- generated_game.py (The complete Python game)")
+        print("- architecture_design.md (Software architecture)")
+        print("- ui_design_specs.md (UI/UX design specifications)")
+        print("- audio_design_specs.md (Audio design specifications)")
+        print("- code_review.md (Code review report)")
+        print("- final_evaluation.md (Final evaluation report)")
+        print(f"\nTo run the generated game:")
+        print(f"python {crew_builder.output_folder}/generated_game.py")
+        print(f"\nCrew execution result: {result}")
+    except Exception as e:
+        raise Exception(f"An error occurred while running the crew: {e}")
 
 
 def train():

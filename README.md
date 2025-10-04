@@ -4,12 +4,13 @@ An AI-powered game development system that uses **CrewAI** multi-agent collabora
 
 ## ✨ Features
 
-- 🤖 **Multi-Agent AI System**: Uses CrewAI with specialized agents (Senior Engineer, QA Engineer, Chief QA Engineer)
-- 🎨 **Professional UI/UX**: Generates games with modern visual design, particle effects, and smooth animations
-- 🏗️ **Organized Output**: Each game is generated in its own dedicated folder with complete documentation
-- 🎲 **Multiple Game Types**: Classic arcade games + traditional Indian games
-- 📦 **Batch Generation**: Generate all games at once or individual games
-- 🔍 **Quality Assurance**: Automatic code review and evaluation for each generated game
+- 🤖 **Enhanced Multi-Agent AI System**: Uses CrewAI with 5 specialized agents (Senior Engineer, UI/UX Designer, Audio Engineer, QA Engineer, Chief QA Engineer)
+- 🎨 **Professional UI/UX**: Generates games with stunning visual design, particle effects, and smooth animations
+- 🏗️ **Comprehensive Documentation**: Each game includes architecture design, UI specs, audio design, code review, and evaluation
+- 🎲 **Diverse Game Collection**: 10 games including classic arcade games + traditional Indian games
+- ⚡ **Simple Usage**: Single command with optional game argument - `crewai run [game]`
+- 🔧 **Advanced Tools**: Custom validation, architecture design, and performance optimization tools
+- 🔍 **Quality Assurance**: Multi-layer code review and comprehensive quality evaluation
 
 ## 🎮 Available Games
 
@@ -51,20 +52,62 @@ Create a `.env` file and add your OpenAI API key:
 OPENAI_API_KEY=your_api_key_here
 ```
 
-4. **Install Pygame** (required for running games):
+4. **Generate Your First Game**:
 ```bash
+# Generate the default Snake game
+crewai run
+
+# Or generate a specific game
+crewai run pong
+```
+
+5. **Run the Generated Game**:
+```bash
+# Install pygame (required for running games)
 pip install pygame
+
+# Run the game
+python output/snake_game/generated_game.py
 ```
 
 ## 🎯 Usage
 
-### Generate All Games (Batch Mode)
-Generate all available games at once:
+### 🎮 Generate Games
+Simple command-line usage with a single argument:
+
 ```bash
+# Generate default game (Snake Game)
 crewai run
+
+# Generate specific game by key
+crewai run example1_pacman
+crewai run example2_snake
+crewai run example3_pong
+crewai run example4_breakout
+crewai run example5_tetris
+
+# Generate specific game by name (partial matching)
+crewai run snake
+crewai run pong
+crewai run tetris
+crewai run pacman
+crewai run carrom
+crewai run kabaddi
 ```
 
-This will create individual folders for each game in the `output/` directory:
+### 🎲 Available Game Keys
+- `example1_pacman` - Pac-Man Clone
+- `example2_snake` - Snake Game
+- `example3_pong` - Pong Game  
+- `example4_breakout` - Breakout Game
+- `example5_tetris` - Simple Tetris
+- `example7_snakes_ladders` - Snakes and Ladders
+- `example8_carrom` - Carrom Board Game
+- `example9_kabaddi` - Kabaddi Game
+- `example10_pithu` - Pithu (Seven Stones)
+- `example11_gilli_danda` - Gilli Danda
+
+Each game is generated in its own folder in the `output/` directory:
 ```
 output/
 ├── pac-man_clone/
@@ -74,12 +117,12 @@ output/
 ├── simple_tetris/
 ├── snakes_and_ladders/
 ├── carrom_board_game/
-├── kabaddi_game/
+├── kabladdi_game/
 ├── pithu_(seven_stones)/
 └── gilli_danda/
 ```
 
-### Run Generated Games
+### 🎮 Run Generated Games
 Navigate to any game folder and run:
 ```bash
 python output/[game_folder]/generated_game.py
@@ -92,11 +135,28 @@ python output/pong_game/generated_game.py
 python output/pac-man_clone/generated_game.py
 ```
 
-### Generated Files Structure
-Each game folder contains:
+### 📁 Generated Files Structure
+Each game folder contains comprehensive documentation:
 - `generated_game.py` - Complete playable Python game
+- `architecture_design.md` - Professional software architecture 
+- `ui_design_specs.md` - UI/UX design specifications
+- `audio_design_specs.md` - Audio system design
 - `code_review.md` - Detailed code review and analysis  
 - `final_evaluation.md` - Quality assessment and recommendations
+
+### 🎯 Command Reference
+```bash
+# Generate specific games
+crewai run                          # Default game (Snake)
+crewai run example1_pacman          # Generate Pac-Man
+crewai run pong                     # Generate Pong (by name)
+crewai run tetris                   # Generate Tetris (by name)
+
+# Training and testing
+crewai train 5 training_data.txt    # Train the crew
+crewai test 3 gpt-4                 # Test the crew
+crewai replay task_123              # Replay a task
+```
 
 ## 🤖 AI Agent System
 
@@ -202,12 +262,18 @@ crew_python_game_builder/
 │   ├── config/
 │   │   ├── agents.yaml          # AI agent configurations
 │   │   ├── tasks.yaml           # Task definitions
-│   │   └── gamedesign.yaml      # Game specifications
+│   │   ├── gamedesign.yaml      # Game specifications
+│   │   └── system_config.yaml   # Advanced system settings
+│   ├── tools/
+│   │   └── custom_tool.py       # Custom validation and optimization tools
 │   ├── crew.py                  # Main crew orchestration
-│   └── main.py                  # Entry point and batch processing
+│   └── main.py                  # Simple entry point
 ├── output/                      # Generated games (auto-created)
 │   ├── [game_name]/
 │   │   ├── generated_game.py    # Playable game
+│   │   ├── architecture_design.md # Software architecture
+│   │   ├── ui_design_specs.md   # UI/UX specifications
+│   │   ├── audio_design_specs.md # Audio design
 │   │   ├── code_review.md       # Code analysis
 │   │   └── final_evaluation.md  # Quality assessment
 ├── knowledge/                   # Additional context files

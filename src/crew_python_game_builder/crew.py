@@ -4,6 +4,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from typing import List
 import os
 import datetime
+from .tools.custom_tool import CodeValidationTool, GameArchitectureTool, PerformanceOptimizerTool
 # If you want to run a snippet of code before or after the crew starts,
 # you can use the @before_kickoff and @after_kickoff decorators
 # https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
@@ -36,16 +37,39 @@ class CrewPythonGameBuilder():
     def senior_engineer_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['senior_engineer_agent'], # type: ignore[index]
+            tools=[CodeValidationTool(), GameArchitectureTool(), PerformanceOptimizerTool()],
             allow_delegation=False,
-            verbose=True
+            verbose=True,
+            max_iter=3,  # Allow multiple iterations for complex games
+            memory=True  # Enable memory for better context retention
+        )
+    
+    @agent
+    def ui_ux_designer_agent(self) -> Agent:
+        return Agent(
+            config=self.agents_config['ui_ux_designer_agent'], # type: ignore[index]
+            allow_delegation=False,
+            verbose=True,
+            memory=True
+        )
+    
+    @agent
+    def audio_engineer_agent(self) -> Agent:
+        return Agent(
+            config=self.agents_config['audio_engineer_agent'], # type: ignore[index]
+            allow_delegation=False,
+            verbose=True,
+            memory=True
         )
     
     @agent
     def qa_engineer_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['qa_engineer_agent'], # type: ignore[index]
+            tools=[CodeValidationTool(), PerformanceOptimizerTool()],
             allow_delegation=False,
-            verbose=True
+            verbose=True,
+            memory=True
         )
     
     @agent
@@ -53,18 +77,47 @@ class CrewPythonGameBuilder():
         return Agent(
             config=self.agents_config['chief_qa_engineer_agent'], # type: ignore[index]
             allow_delegation=True,
-            verbose=True
+            verbose=True,
+            memory=True,
+            max_execution_time=300  # Allow more time for comprehensive evaluation
         )
 
     # To learn more about structured task outputs,
     # task dependencies, and task callbacks, check out the documentation:
     # https://docs.crewai.com/concepts/tasks#overview-of-a-task
     @task
+    def architecture_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['architecture_task'], # type: ignore[index]
+            agent=self.senior_engineer_agent(),
+            output_file=f'{self.output_folder}/architecture_design.md'
+        )
+
+    @task
+    def ui_design_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['ui_design_task'], # type: ignore[index]
+            agent=self.ui_ux_designer_agent(),
+            output_file=f'{self.output_folder}/ui_design_specs.md',
+            context=[self.architecture_task()]  # Depends on architecture
+        )
+
+    @task
+    def audio_design_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['audio_design_task'], # type: ignore[index]
+            agent=self.audio_engineer_agent(),
+            output_file=f'{self.output_folder}/audio_design_specs.md',
+            context=[self.architecture_task()]  # Depends on architecture
+        )
+
+    @task
     def code_task(self) -> Task:
         return Task(
             config=self.tasks_config['code_task'], # type: ignore[index]
             agent=self.senior_engineer_agent(),
-            output_file=f'{self.output_folder}/generated_game.py'
+            output_file=f'{self.output_folder}/generated_game.py',
+            context=[self.architecture_task(), self.ui_design_task(), self.audio_design_task()]  # Use all design specs
         )
 
     @task
@@ -72,7 +125,8 @@ class CrewPythonGameBuilder():
         return Task(
             config=self.tasks_config['review_task'], # type: ignore[index]
             agent=self.qa_engineer_agent(),
-            output_file=f'{self.output_folder}/code_review.md'
+            output_file=f'{self.output_folder}/code_review.md',
+            context=[self.code_task()]  # Review the generated code
         )
 
     @task
@@ -80,7 +134,9 @@ class CrewPythonGameBuilder():
         return Task(
             config=self.tasks_config['evaluate_task'], # type: ignore[index]
             agent=self.chief_qa_engineer_agent(),
-            output_file=f'{self.output_folder}/final_evaluation.md'
+            output_file=f'{self.output_folder}/final_evaluation.md',
+            context=[self.architecture_task(), self.ui_design_task(), self.audio_design_task(), 
+                    self.code_task(), self.review_task()]  # Comprehensive evaluation
         )
 
     @crew
