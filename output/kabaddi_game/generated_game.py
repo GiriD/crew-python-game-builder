@@ -1,555 +1,511 @@
 import pygame
 import sys
 import random
-import time
+from enum import Enum, auto
 
-# Constants for game setup
-SCREEN_WIDTH = 950
+# Constants (Theme colors, court, game)
+SCREEN_WIDTH = 960
 SCREEN_HEIGHT = 600
-COURT_MARGIN = 60
-COURT_WIDTH = SCREEN_WIDTH - 2 * COURT_MARGIN
-COURT_HEIGHT = SCREEN_HEIGHT - 2 * COURT_MARGIN
-
-TEAM_SIZE = 5
-PLAYER_RADIUS = 18
-RAIDER_COLOR = (255, 0, 0)
-DEFENDER_COLOR = (0, 0, 200)
-SELECTED_COLOR = (255, 255, 0)
-SUB_COLOR = (120, 120, 120)
-
-BREATH_MAX = 8  # seconds that raider can raid
-ROUND_TIME = 45  # seconds per round
-NUM_ROUNDS = 2
-
-FONT_NAME = 'arial'
 FPS = 60
+TEAM_SIZE = 5
+PLAYER_RADIUS = 24
+COURT_MARGIN = 72
+BREATH_MAX = 100
+RAID_TIME_LIMIT = 15 # seconds per raid
+ROUNDS_PER_MATCH = 2
+SUBSTITUTIONS_PER_ROUND = 2
+FONT_NAME = 'arial'
+# Color palette (Accessible)
+COLOR_RED = (216, 67, 21)
+COLOR_BLUE = (25, 118, 210)
+COLOR_SAND = (251, 233, 231)
+COLOR_GOLD = (255, 214, 0)
+COLOR_SLATE = (38, 50, 56)
+COLOR_GRAY = (176, 190, 197)
+COLOR_GREEN = (56, 142, 60)
+COLOR_ORANGE = (255, 111, 0)
+COLOR_CYAN = (0, 188, 212)
+COLOR_WHITE = (255, 255, 255)
+COLOR_DANGER = (255, 82, 82)
 
-# Exception for game-related errors
-class KabaddiGameException(Exception):
+# Enum for Player State
+class PlayerState(Enum):
+    ACTIVE = auto()
+    TAGGED = auto()
+    OUT = auto()
+    SUBBED = auto()
+
+class GameStateEnum(Enum):
+    MENU = auto()
+    ROUND_START = auto()
+    RAID = auto()
+    TACKLE = auto()
+    END_ROUND = auto()
+    GAME_OVER = auto()
+    PAUSE = auto()
+
+class KabaddiException(Exception):
     pass
 
-# Player Type Enum
-class PlayerType:
-    DEFENDER = 0
-    RAIDER = 1
-    SUB = 2
+class Logger:
+    @staticmethod
+    def log(message):
+        print("[KabaddiGame]", message)
 
-# Player class
-class Player:
-    def __init__(self, x, y, team, idx, player_type=PlayerType.DEFENDER):
-        self.x = x
-        self.y = y
-        self.initial_x = x
-        self.initial_y = y
-        self.team = team
-        self.idx = idx
-        self.player_type = player_type
-        self.selected = False
-        self.active = True
-        self.tagged = False
+# Player Class (Entity)
+class Player(pygame.sprite.Sprite):
+    def __init__(self, id, team_name, position, is_raider=False, jersey_num=0):
+        super().__init__()
+        self.id = id
+        self.team_name = team_name
+        self.position = position.copy()
+        self.is_raider = is_raider
+        self.state = PlayerState.ACTIVE
+        self.breath_meter = BREATH_MAX
+        self.jersey_num = jersey_num
         self.tackled = False
-
-    def move(self, dx, dy, bounds):
-        # Move player within given bounds
-        try:
-            nx = self.x + dx
-            ny = self.y + dy
-            if bounds.left + PLAYER_RADIUS <= nx <= bounds.right - PLAYER_RADIUS and \
-               bounds.top + PLAYER_RADIUS <= ny <= bounds.bottom - PLAYER_RADIUS:
-                self.x = nx
-                self.y = ny
-        except Exception as e:
-            raise KabaddiGameException("Player movement error!") from e
-
-    def reset(self):
-        # Reset player to initial position
-        self.x = self.initial_x
-        self.y = self.initial_y
-        self.selected = False
-        self.tagged = False
-        self.tackled = False
-        self.active = True
-        self.player_type = PlayerType.DEFENDER
-
-    def draw(self, surface):
-        # Draw player
-        if not self.active:
-            color = SUB_COLOR
-        elif self.player_type == PlayerType.RAIDER:
-            color = RAIDER_COLOR
+        self.color = COLOR_RED if team_name == "Red" else COLOR_BLUE
+        self.out_timer = 0
+        self.radius = PLAYER_RADIUS
+        self.subbed = False
+        # For rendering: create simple avatar
+        self.image = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
+        self.rect = self.image.get_rect(center=(position[0], position[1]))
+        self.update_avatar()
+    def update_avatar(self):
+        self.image.fill((0,0,0,0))
+        glow = COLOR_CYAN if self.is_raider and self.breath_meter > 25 else COLOR_DANGER if self.is_raider else self.color
+        pygame.draw.circle(self.image, glow, (self.radius, self.radius), self.radius+3)
+        pygame.draw.circle(self.image, self.color, (self.radius, self.radius), self.radius-3)
+        font = pygame.font.SysFont(FONT_NAME, 24)
+        text_color = COLOR_WHITE if self.color != COLOR_WHITE else COLOR_SLATE
+        text = font.render(str(self.jersey_num), True, text_color)
+        text_rect = text.get_rect(center=(self.radius, self.radius))
+        self.image.blit(text, text_rect)
+        if self.is_raider:
+            rfont = pygame.font.SysFont(FONT_NAME, 16, bold=True)
+            rtext = rfont.render("R", True, COLOR_CYAN)
+            self.image.blit(rtext, (self.radius-15, self.radius-18))
+    def move(self, dx, dy, court_rect):
+        nx = self.position[0] + dx
+        ny = self.position[1] + dy
+        if court_rect.collidepoint(nx, ny):
+            self.position[0] = nx
+            self.position[1] = ny
+            self.rect.center = (nx, ny)
         else:
-            color = DEFENDER_COLOR
-        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), PLAYER_RADIUS)
-        if self.selected:
-            pygame.draw.circle(surface, SELECTED_COLOR, (int(self.x), int(self.y)), PLAYER_RADIUS + 3, 3)
-        # Show tag/tackle status
-        if self.tagged or self.tackled:
-            font = pygame.font.SysFont(FONT_NAME, 18)
-            txt = 'T' if self.tackled else 'X'
-            surface.blit(font.render(txt, True, (0, 0, 0)), (self.x-6, self.y-12))
+            # Out of bounds, only allow if raider is retreating
+            if self.is_raider:
+                self.state = PlayerState.OUT
+    def tag(self, target):
+        if self.is_raider and target.state == PlayerState.ACTIVE and not target.is_raider:
+            target.state = PlayerState.TAGGED
+            Logger.log(f"Raider {self.jersey_num} tagged defender {target.jersey_num}")
+            return True
+        return False
+    def tackle(self, raider):
+        if not self.is_raider and self.state == PlayerState.ACTIVE:
+            dist = ((self.position[0] - raider.position[0])**2 + (self.position[1] - raider.position[1])**2)**0.5
+            if dist <= PLAYER_RADIUS*2:
+                raider.state = PlayerState.OUT
+                self.tackled = True
+                Logger.log(f"Defender {self.jersey_num} tackled raider {raider.jersey_num}")
+                return True
+        return False
+    def update_breath(self, dt):
+        if self.is_raider and self.state == PlayerState.ACTIVE:
+            self.breath_meter -= dt*5
+            if self.breath_meter < 0:
+                self.breath_meter = 0
+                self.state = PlayerState.OUT
+        else:
+            self.breath_meter = BREATH_MAX
+    def update(self):
+        self.rect.center = (self.position[0], self.position[1])
+        self.update_avatar()
+    def sub_out(self):
+        self.subbed = True
+        self.state = PlayerState.SUBBED
+        Logger.log(f"Player {self.jersey_num} subbed out.")
+    def sub_in(self, position):
+        self.subbed = False
+        self.state = PlayerState.ACTIVE
+        self.position = position.copy()
+        self.rect.center = (self.position[0], self.position[1])
+        Logger.log(f"Substitute player {self.jersey_num} in.")
 
-# Team class
+# Team Class
 class Team:
     def __init__(self, name, side):
         self.name = name
         self.side = side  # 'left' or 'right'
         self.players = []
-        self.on_field = []
+        self.active_players = []
         self.subs = []
         self.score = 0
-
-    def setup_players(self):
-        # Position players on their half
-        MarginY = COURT_MARGIN + COURT_HEIGHT // 2
-        if self.side == 'left':
-            half_rect = pygame.Rect(COURT_MARGIN, COURT_MARGIN, COURT_WIDTH // 2, COURT_HEIGHT)
-            x_start = COURT_MARGIN + COURT_WIDTH // 6
-        else:
-            half_rect = pygame.Rect(COURT_MARGIN + COURT_WIDTH // 2, COURT_MARGIN, COURT_WIDTH // 2, COURT_HEIGHT)
-            x_start = COURT_MARGIN + COURT_WIDTH * 5 // 6
-
-        y_gap = COURT_HEIGHT // (TEAM_SIZE + 1)
-        for i in range(TEAM_SIZE):
-            x = x_start
-            y = COURT_MARGIN + (i + 1) * y_gap
-            p = Player(x, y, self, i)
-            self.players.append(p)
-            self.on_field.append(p)
-        # Add two subs
-        for i in range(2):
-            x = x_start
-            y = SCREEN_HEIGHT - COURT_MARGIN - (i + 1) * 40
-            sub_p = Player(x, y, self, TEAM_SIZE + i, PlayerType.SUB)
-            sub_p.active = False
-            self.players.append(sub_p)
-            self.subs.append(sub_p)
-
-    def draw(self, surface):
-        # Draw all players
-        for p in self.players:
-            p.draw(surface)
-
-    def reset_positions(self):
-        # Reset all players to their initial positions
-        for p in self.players:
-            p.reset()
-
-# Kabaddi Match class
-class KabaddiMatch:
-    def __init__(self, surface):
-        self.surface = surface
-        self.teams = []
-        self.current_round = 0
-        self.round_start_time = time.time()
-        self.round_end_time = self.round_start_time + ROUND_TIME
-        self.active_team = 0
-        self.defending_team = 1
-        self.raider = None
-        self.breath_start = None
-        self.breath_meter = BREATH_MAX
-        self.game_over = False
-        self.in_raid = False
-        self.raider_selected = False
-        self.tackle_attempted = False
-        self.status_msg = ""
-        self.selected_defender = None
-        self.switch_locked = False
-        self.sub_candidate = None
-        self.score_flash_time = 0
-        self.flash_team = None
-        self.last_score_time = 0
-        self.font = pygame.font.SysFont(FONT_NAME, 22)
-        self.bigfont = pygame.font.SysFont(FONT_NAME, 32)
-
-    def setup(self):
-        # Setup two teams and their players
+        self.badge_color = COLOR_RED if name == "Red" else COLOR_BLUE
+    def get_active(self):
+        return [p for p in self.players if p.state == PlayerState.ACTIVE]
+    def substitute(self, in_player, out_player, position):
         try:
-            team1 = Team("Team Blue", 'left')
-            team2 = Team("Team Red", 'right')
-            team1.setup_players()
-            team2.setup_players()
-            self.teams = [team1, team2]
-            self.current_round = 1
-            self.active_team = 0  # team 0 raids first
-            self.defending_team = 1
-            self.raider_selected = False
-            self.raider = None
-            self.in_raid = False
-            self.breath_meter = BREATH_MAX
-            self.breath_start = None
-            self.tackle_attempted = False
-            self.round_start_time = time.time()
-            self.round_end_time = self.round_start_time + ROUND_TIME
-            self.status_msg = "Select a Raider with mouse"
-            self.selected_defender = None
-            self.switch_locked = False
-            self.sub_candidate = None
-            self.flash_team = None
-            self.last_score_time = 0
-            for t in self.teams:
-                t.reset_positions()
+            if out_player in self.active_players and in_player in self.subs:
+                out_player.sub_out()
+                self.active_players.remove(out_player)
+                self.subs.remove(in_player)
+                in_player.sub_in(position)
+                self.active_players.append(in_player)
+                Logger.log(f"Substitution: {out_player.jersey_num} -> {in_player.jersey_num}")
+            else:
+                raise KabaddiException("Invalid substitution attempt.")
         except Exception as e:
-            raise KabaddiGameException("KabaddiMatch setup error!") from e
+            Logger.log(f"Substitution error: {e}")
+    def reset_team(self, court_rect):
+        # Reset all players and positions
+        home_x = court_rect.left + COURT_MARGIN if self.side == 'left' else court_rect.right - COURT_MARGIN
+        ystep = (court_rect.bottom - court_rect.top - COURT_MARGIN*2) // (TEAM_SIZE-1)
+        for idx, p in enumerate(self.players):
+            p.position = [home_x, court_rect.top + COURT_MARGIN + idx*ystep]
+            p.rect.center = tuple(p.position)
+            p.state = PlayerState.ACTIVE
+            p.subbed = False
+            p.tackled = False
+            p.breath_meter = BREATH_MAX
+            p.is_raider = False
+            p.update_avatar()
+        self.active_players = self.players[:TEAM_SIZE]
+        self.subs = [p for p in self.players if p not in self.active_players]
+    def add_player(self, player):
+        if player not in self.players:
+            self.players.append(player)
+            if len(self.active_players) < TEAM_SIZE:
+                self.active_players.append(player)
+            else:
+                self.subs.append(player)
 
+# AI Controller (for defenders as default)
+class AIController:
+    def __init__(self, team, court_rect):
+        self.team = team
+        self.court_rect = court_rect
+    def decide_action(self, defenders, raider, dt):
+        # Simple AI: Move toward raider, attempt tackle if close
+        for defender in defenders:
+            if defender.state != PlayerState.ACTIVE:
+                continue
+            dx = raider.position[0] - defender.position[0]
+            dy = raider.position[1] - defender.position[1]
+            dist = max(1, (dx**2 + dy**2)**0.5)
+            # Only move if on own half
+            if defender.team_name != raider.team_name:
+                move_dist = 1.2 * dt * 60
+                defender.move(dx/dist*move_dist, dy/dist*move_dist, self.court_rect)
+                # Try tackle
+                if defender.tackle(raider):
+                    Logger.log(f"AI defender {defender.jersey_num} tackled raider {raider.jersey_num}")
+
+# Input Handler for user events
+class InputHandler:
+    def __init__(self):
+        self.actions = {'up': False, 'down': False, 'left': False, 'right': False, 'tag': False, 'retreat': False, 'tackle': False, 'pause': False}
+    def process_events(self):
+        ret = self.actions.copy()
+        for key in self.actions.keys():
+            ret[key] = False
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    ret['up'] = True
+                if event.key == pygame.K_DOWN:
+                    ret['down'] = True
+                if event.key == pygame.K_LEFT:
+                    ret['left'] = True
+                if event.key == pygame.K_RIGHT:
+                    ret['right'] = True
+                if event.key == pygame.K_SPACE:
+                    ret['tag'] = True
+                if event.key == pygame.K_RETURN:
+                    ret['retreat'] = True
+                if event.key == pygame.K_t:
+                    ret['tackle'] = True
+                if event.key == pygame.K_p:
+                    ret['pause'] = True
+        return ret
+
+# Renderer
+class Renderer:
+    def __init__(self, screen, font):
+        self.screen = screen
+        self.font = font
+        self.small_font = pygame.font.SysFont(FONT_NAME, 18)
     def draw_court(self):
-        # Draw the kabaddi court split into halves
-        pygame.draw.rect(self.surface, (180, 180, 180), (COURT_MARGIN, COURT_MARGIN, COURT_WIDTH, COURT_HEIGHT), 0)
-        pygame.draw.rect(self.surface, (90, 90, 90), (COURT_MARGIN, COURT_MARGIN, COURT_WIDTH, COURT_HEIGHT), 4)
-        mid_line = COURT_MARGIN + COURT_WIDTH // 2
-        pygame.draw.line(
-            self.surface, (30, 30, 30),
-            (mid_line, COURT_MARGIN),
-            (mid_line, COURT_MARGIN + COURT_HEIGHT),
-            5
-        )
-        # Show round/time
-        round_txt = f"Round {self.current_round}/{NUM_ROUNDS}"
-        txt = self.font.render(round_txt, True, (0, 70, 0))
-        self.surface.blit(txt, (SCREEN_WIDTH // 2 - 70, 20))
+        court_rect = pygame.Rect(COURT_MARGIN, COURT_MARGIN, SCREEN_WIDTH-2*COURT_MARGIN, SCREEN_HEIGHT-2*COURT_MARGIN)
+        self.screen.fill(COLOR_SAND)
+        pygame.draw.rect(self.screen, COLOR_GOLD, court_rect, 8)
+        pygame.draw.line(self.screen, COLOR_SLATE, (SCREEN_WIDTH//2, COURT_MARGIN), (SCREEN_WIDTH//2, SCREEN_HEIGHT-COURT_MARGIN), 6)
+        return court_rect
+    def draw_players(self, teams):
+        sprites = pygame.sprite.Group()
+        for team in teams:
+            for player in team.players:
+                sprites.add(player)
+        sprites.draw(self.screen)
+        for team in teams:
+            for player in team.players:
+                if player.is_raider:
+                    if player.breath_meter < 25:
+                        warn_txt = self.small_font.render("Breath Low! Retreat!", True, COLOR_DANGER)
+                        self.screen.blit(warn_txt, (player.position[0]-50, player.position[1]-38))
+    def draw_ui(self, game, state):
+        # Scoreboard
+        bar = pygame.Rect(SCREEN_WIDTH//2-130, 18, 260, 44)
+        pygame.draw.rect(self.screen, COLOR_SLATE, bar, border_radius=12)
+        tA = self.font.render(f"Red: {game.teams[0].score}", True, COLOR_WHITE)
+        tB = self.font.render(f"Blue: {game.teams[1].score}", True, COLOR_WHITE)
+        self.screen.blit(tA, (SCREEN_WIDTH//2-120, 26))
+        self.screen.blit(tB, (SCREEN_WIDTH//2+36, 26))
+        rnd_txt = self.font.render(f"Round {game.round_manager.current_round+1}/{ROUNDS_PER_MATCH}", True, COLOR_GOLD)
+        self.screen.blit(rnd_txt, (SCREEN_WIDTH//2-70, 62))
+        # Breath Meter
+        for team in game.teams:
+            raider = [p for p in team.active_players if p.is_raider]
+            if raider:
+                r = raider[0]
+                meter_x = 48 if team.name == "Red" else SCREEN_WIDTH-200
+                pygame.draw.rect(self.screen, COLOR_GRAY, (meter_x, 80, 140, 18), border_radius=8)
+                breath_col = COLOR_CYAN if r.breath_meter > 25 else COLOR_DANGER
+                width = int(140*r.breath_meter/BREATH_MAX)
+                pygame.draw.rect(self.screen, breath_col, (meter_x, 80, width, 18), border_radius=8)
+                btxt = self.small_font.render(f"Breath: {int(r.breath_meter)}", True, COLOR_SLATE)
+                self.screen.blit(btxt, (meter_x+28, 82))
+        # Substitution/Info panel
+        info_rect = pygame.Rect(24, SCREEN_HEIGHT-70, SCREEN_WIDTH-48, 44)
+        pygame.draw.rect(self.screen, COLOR_SLATE, info_rect, border_radius=12)
+        txt = "Space: Tag | Enter: Retreat | T: Tackle | P: Pause"
+        control_txt = self.small_font.render(txt, True, COLOR_WHITE)
+        self.screen.blit(control_txt, (info_rect.left+18, info_rect.top+8))
+        # Pause indication
+        if state.current_state == GameStateEnum.PAUSE:
+            pause_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            pause_overlay.fill((38, 50, 56, 160))
+            self.screen.blit(pause_overlay, (0,0))
+            pausetxt = self.font.render("PAUSED", True, COLOR_GOLD)
+            self.screen.blit(pausetxt, (SCREEN_WIDTH//2-60, SCREEN_HEIGHT//2-30))
 
-    def draw_status(self):
-        # Draw scores, time, and status
-        left_score = self.teams[0].score
-        right_score = self.teams[1].score
-        txt = f"{self.teams[0].name}: {left_score}   |   {self.teams[1].name}: {right_score}"
-        scoretxt = self.bigfont.render(txt, True, (0, 0, 100))
-        self.surface.blit(scoretxt, (SCREEN_WIDTH // 2 - 210, SCREEN_HEIGHT - 48))
-        time_left = int(self.round_end_time - time.time())
-        timer_color = (200, 0, 0) if time_left <= 7 else (0, 0, 0)
-        timertxt = self.font.render(f"Time Left: {max(0, time_left)}s", True, timer_color)
-        self.surface.blit(timertxt, (SCREEN_WIDTH // 2 - 50, 54))
+    def draw_menu(self):
+        self.screen.fill(COLOR_SAND)
+        title = pygame.font.SysFont(FONT_NAME, 54, bold=True).render("Kabaddi Game", True, COLOR_GOLD)
+        self.screen.blit(title, (SCREEN_WIDTH//2-title.get_width()//2, 60))
+        start_btn = pygame.font.SysFont(FONT_NAME, 36).render("Start New Match", True, COLOR_RED)
+        self.screen.blit(start_btn, (SCREEN_WIDTH//2-start_btn.get_width()//2, 170))
+        team_txt = pygame.font.SysFont(FONT_NAME, 24, bold=True).render("Team Red vs Team Blue", True, COLOR_SLATE)
+        self.screen.blit(team_txt, (SCREEN_WIDTH//2-team_txt.get_width()//2, 226))
+        info = self.small_font.render("Press Enter to Start | P: Settings | H: Help", True, COLOR_SLATE)
+        self.screen.blit(info, (SCREEN_WIDTH//2-info.get_width()//2, 290))
+    def draw_game_over(self, winner, game):
+        self.screen.fill(COLOR_SAND)
+        overtxt = pygame.font.SysFont(FONT_NAME, 54, bold=True).render("Game Over!", True, COLOR_GOLD)
+        self.screen.blit(overtxt, (SCREEN_WIDTH//2-overtxt.get_width()//2, 80))
+        winner_txt = pygame.font.SysFont(FONT_NAME, 36).render(f"Winner: {winner}", True, COLOR_GREEN)
+        self.screen.blit(winner_txt, (SCREEN_WIDTH//2-winner_txt.get_width()//2, 164))
+        sc_txt = self.font.render(f"Red: {game.teams[0].score}   Blue: {game.teams[1].score}", True, COLOR_SLATE)
+        self.screen.blit(sc_txt, (SCREEN_WIDTH//2-sc_txt.get_width()//2, 220))
+        btn = pygame.font.SysFont(FONT_NAME, 28, bold=True).render("Enter: Replay | Esc: Menu", True, COLOR_GOLD)
+        self.screen.blit(btn, (SCREEN_WIDTH//2-btn.get_width()//2, 310))
 
-        # Flash score on recent event
-        if self.flash_team is not None and time.time() < self.score_flash_time + 0.7:
-            txt = f"+1 Point!"
-            team_idx = self.flash_team
-            color = (180, 0, 0) if team_idx == 1 else (60, 90, 255)
-            stxt = self.bigfont.render(txt, True, color)
-            sx = 160 if team_idx == 0 else SCREEN_WIDTH - 230
-            self.surface.blit(stxt, (sx, SCREEN_HEIGHT // 2 - 44))
-        # Status
-        status = self.status_msg
-        if status:
-            st = self.font.render(status, True, (10, 80, 30))
-            self.surface.blit(st, (SCREEN_WIDTH // 2 - 170, COURT_MARGIN // 2))
+# Round Manager (Singleton/manager)
+class RoundManager:
+    def __init__(self):
+        self.current_round = 0
+        self.round_time = 60
+        self.timer = 0
+        self.teams_switched = False
+        self.active = False
+    def start_round(self):
+        self.timer = self.round_time
+        self.teams_switched = False
+        self.active = True
+    def switch_teams(self):
+        self.teams_switched = True
+    def update(self, dt):
+        if self.active:
+            self.timer -= dt
+            if self.timer <= 0:
+                self.active = False
+                self.timer = 0
+    def is_time_up(self):
+        return self.timer <= 0
 
-        # Breath meter
-        if self.in_raid and self.breath_start:
-            breath_left = max(0, BREATH_MAX - (time.time() - self.breath_start))
-            bar_w = int(220 * (breath_left / BREATH_MAX))
-            pygame.draw.rect(self.surface, (80, 200, 70), (SCREEN_WIDTH // 2 - 110, COURT_MARGIN // 2 + 30, bar_w, 22))
-            txtbreath = self.font.render(f"Breath: {breath_left:.1f}s", True, (0, 60, 0))
-            self.surface.blit(txtbreath, (SCREEN_WIDTH // 2 - 60, COURT_MARGIN // 2 + 32))
+# State Machine
+class GameState:
+    def __init__(self):
+        self.current_state = GameStateEnum.MENU
+    def set_state(self, state):
+        self.current_state = state
+        Logger.log(f"State change: {state.name}")
 
-    def handle_events(self, events):
-        mx, my = pygame.mouse.get_pos()
-        for event in events:
-            try:
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if not self.raider_selected:
-                        # Select raider from active team
-                        for p in self.teams[self.active_team].on_field:
-                            if p.active and (mx - p.x) ** 2 + (my - p.y) ** 2 < PLAYER_RADIUS ** 2:
-                                self.set_raider(p)
-                                break
-                    elif self.in_raid and not self.tackle_attempted:
-                        # Defender selection for tackling
-                        for p in self.teams[self.defending_team].on_field:
-                            if p.active and (mx - p.x) ** 2 + (my - p.y) ** 2 < PLAYER_RADIUS ** 2:
-                                self.selected_defender = p
-                                self.selected_defender.selected = True
-                                self.status_msg = "Defender selected. Press SPACE to attempt tackle."
-                                break
-                    elif not self.in_raid and not self.switch_locked:
-                        # Substitution selection
-                        self.sub_candidate = None
-                        for p in self.teams[self.active_team].on_field:
-                            if (mx - p.x) ** 2 + (my - p.y) ** 2 < PLAYER_RADIUS ** 2:
-                                self.sub_candidate = p
-                                break
-                        for p in self.teams[self.active_team].subs:
-                            if (mx - p.x) ** 2 + (my - p.y) ** 2 < PLAYER_RADIUS ** 2:
-                                if self.sub_candidate:
-                                    self.do_substitution(self.active_team, self.sub_candidate.idx, p.idx)
-                                    break
-                elif event.type == pygame.KEYDOWN:
-                    if self.in_raid and self.raider:
-                        # Raider controls (arrow keys)
-                        if self.raider.team.side == 'left':
-                            half_rect = pygame.Rect(COURT_MARGIN, COURT_MARGIN, COURT_WIDTH, COURT_HEIGHT)
-                        else:
-                            half_rect = pygame.Rect(COURT_MARGIN, COURT_MARGIN, COURT_WIDTH, COURT_HEIGHT)
-                        speed = 7 if event.mod & pygame.KMOD_SHIFT else 4
-                        if event.key == pygame.K_UP:
-                            self.raider.move(0, -speed, half_rect)
-                        elif event.key == pygame.K_DOWN:
-                            self.raider.move(0, speed, half_rect)
-                        elif event.key == pygame.K_LEFT:
-                            self.raider.move(-speed, 0, half_rect)
-                        elif event.key == pygame.K_RIGHT:
-                            self.raider.move(speed, 0, half_rect)
-                        # Tag defender
-                        elif event.key == pygame.K_SPACE:
-                            for p in self.teams[self.defending_team].on_field:
-                                if p.active and ((p.x - self.raider.x) ** 2 + (p.y - self.raider.y) ** 2 < (PLAYER_RADIUS*2) ** 2):
-                                    p.tagged = True
-                                    self.status_msg = "Defender tagged! Return to own half!"
-                                    self.tackle_attempted = False
-                                    break
-                    if self.in_raid and self.selected_defender and not self.tackle_attempted:
-                        # Tackle attempt by defender (space key)
-                        if event.key == pygame.K_SPACE:
-                            if ((self.selected_defender.x - self.raider.x) ** 2 + (self.selected_defender.y - self.raider.y) ** 2 < (PLAYER_RADIUS*2) ** 2):
-                                self.selected_defender.tackled = True
-                                self.tackle_attempted = True
-                                self.status_msg = "Raider tackled!"
-                            else:
-                                self.status_msg = "Missed tackle!"
-                            self.selected_defender.selected = False
-                            self.selected_defender = None
-                    # Substitution confirmation
-                    if event.key == pygame.K_s and not self.in_raid and not self.switch_locked and self.sub_candidate is not None:
-                        if not self.sub_candidate.active:
-                            # Must select in-field then sub
-                            for p in self.teams[self.active_team].on_field:
-                                if p.selected:
-                                    self.do_substitution(self.active_team, p.idx, self.sub_candidate.idx)
-                                    break
-                        else:
-                            self.sub_candidate.selected = not self.sub_candidate.selected
-            except Exception as e:
-                raise KabaddiGameException("Error handling event!") from e
-
-    def set_raider(self, player):
-        # Set the selected player as raider for this raid
-        try:
-            player.player_type = PlayerType.RAIDER
-            player.selected = True
-            self.raider_selected = True
-            self.raider = player
-            self.in_raid = True
-            self.breath_start = time.time()
-            self.status_msg = "Raider selected! Use arrow keys to raid. SPACE to tag."
-            for p in self.teams[self.active_team].on_field:
-                if p != player:
-                    p.selected = False
-        except Exception as e:
-            raise KabaddiGameException("Could not assign raider!") from e
-
-    def process_raid(self):
-        # Main raid process: Check breath, tagging, return, tackle
-        try:
-            if not self.raider or not self.in_raid:
-                return
-            now = time.time()
-            # Breath meter check
-            breath_left = BREATH_MAX - (now - self.breath_start)
-            if breath_left <= 0:
-                self.status_msg = "Out of breath! Raid failed."
-                self.teams[self.defending_team].score += 1
-                self.flash_team = self.defending_team
-                self.score_flash_time = now
-                self.end_raid()
-                return
-            # If raider crosses mid-line into defender half
-            mid_line = COURT_MARGIN + COURT_WIDTH // 2
-            raider_side = self.raider.x < mid_line if self.active_team == 0 else self.raider.x > mid_line
-            if not raider_side:
-                # In opponent's half
-                # If tagged defender, try returning
-                if any(p.tagged for p in self.teams[self.defending_team].on_field):
-                    self.status_msg = "Return to own half!"
-                # If tackled
-                if any(p.tackled for p in self.teams[self.defending_team].on_field):
-                    self.status_msg = "Raider tackled! No points."
-                    self.teams[self.defending_team].score += 1
-                    self.flash_team = self.defending_team
-                    self.score_flash_time = now
-                    self.end_raid()
-                    return
-            else:
-                # In own half
-                tagged = [p for p in self.teams[self.defending_team].on_field if p.tagged]
-                if tagged:
-                    # Tagged defenders, successful raid!
-                    self.teams[self.active_team].score += len(tagged)
-                    self.status_msg = f"Raid successful! +{len(tagged)} pts."
-                    self.flash_team = self.active_team
-                    self.score_flash_time = now
-                    self.end_raid(successful=True)
-                    return
-                else:
-                    # No tag on raid
-                    self.status_msg = "Safe return, no points."
-                    self.end_raid()
-                    return
-        except Exception as e:
-            raise KabaddiGameException("Raid processing error!") from e
-
-    def end_raid(self, successful=False):
-        # Ends current raid, resets necessary variables
-        try:
-            self.in_raid = False
-            self.raider_selected = False
-            self.raider.player_type = PlayerType.DEFENDER
-            self.raider.selected = False
-            self.raider = None
-            self.breath_start = None
-            self.breath_meter = BREATH_MAX
-            self.tackle_attempted = False
-            self.switch_locked = True
-            self.status_msg += " Press ENTER to next raid."
-            # Remove tagged defenders temporarily
-            for p in self.teams[self.defending_team].on_field:
-                if p.tagged and successful:
-                    p.active = False  # Out for next raid
-                p.tagged = False
-                p.tackled = False
-            self.selected_defender = None
-            self.last_score_time = time.time()
-        except Exception as e:
-            raise KabaddiGameException("Error ending raid!") from e
-
-    def do_substitution(self, team_idx, out_idx, in_idx):
-        # Substitution: swap player-out with sub-in
-        try:
-            team = self.teams[team_idx]
-            p_out = None
-            p_in = None
+# Game Class & Loop
+class Game:
+    def __init__(self, screen, font):
+        self.state = GameState()
+        self.screen = screen
+        self.font = font
+        self.renderer = Renderer(screen, font)
+        self.input_handler = InputHandler()
+        self.round_manager = RoundManager()
+        # Teams
+        self.teams = [Team("Red", 'left'), Team("Blue", 'right')]
+        # Generate players
+        court_rect = pygame.Rect(COURT_MARGIN, COURT_MARGIN, SCREEN_WIDTH-2*COURT_MARGIN, SCREEN_HEIGHT-2*COURT_MARGIN)
+        for tidx, team in enumerate(self.teams):
+            for pid in range(TEAM_SIZE+SUBSTITUTIONS_PER_ROUND):
+                x = court_rect.left + COURT_MARGIN if team.side == 'left' else court_rect.right - COURT_MARGIN
+                ystep = (court_rect.bottom-court_rect.top-COURT_MARGIN*2)//(TEAM_SIZE)
+                y = court_rect.top + COURT_MARGIN + pid * ystep
+                p = Player(id=f"{team.name}-{pid}", team_name=team.name, position=[x, y], is_raider=False, jersey_num=pid+1)
+                team.add_player(p)
+        self.ai_controller = AIController(self.teams[1], court_rect)
+        self.active_team_idx = 0
+        self.raider_idx = 0
+        self.sub_counter = 0
+        self.match_over = False
+        # Sprite Groups
+        self.all_sprites = pygame.sprite.Group()
+        for team in self.teams:
+            for player in team.players:
+                self.all_sprites.add(player)
+        self.court_rect = court_rect
+        # Sound placeholders
+        # self.sounds = ...
+    def reset_round(self):
+        for team in self.teams:
+            team.reset_team(self.court_rect)
+        self.active_team_idx = 0 if self.round_manager.current_round % 2 == 0 else 1
+        self.raider_idx = 0
+        self.sub_counter = 0
+        # Set raider for attacking team
+        for tidx, team in enumerate(self.teams):
             for p in team.players:
-                if p.idx == out_idx:
-                    p_out = p
-                if p.idx == in_idx:
-                    p_in = p
-            if p_out and p_in and p_out.active and not p_in.active:
-                p_out.active = False
-                p_in.active = True
-                team.on_field.remove(p_out)
-                team.on_field.append(p_in)
-                team.subs.remove(p_in)
-                team.subs.append(p_out)
-                p_in.x, p_in.y = p_out.x, p_out.y
-                self.status_msg = "Substitution complete."
-            else:
-                self.status_msg = "Invalid substitution."
-        except Exception as e:
-            raise KabaddiGameException("Substitution error") from e
-
-    def round_over(self):
-        # Round timer finished
-        return time.time() > self.round_end_time
-
-    def next_round(self):
-        # Set up for new round
-        try:
-            self.current_round += 1
-            self.active_team, self.defending_team = self.defending_team, self.active_team
-            for t in self.teams:
-                t.reset_positions()
-            self.raider_selected = False
-            self.raider = None
-            self.in_raid = False
-            self.breath_meter = BREATH_MAX
-            self.breath_start = None
-            self.tackle_attempted = False
-            self.round_start_time = time.time()
-            self.round_end_time = self.round_start_time + ROUND_TIME
-            self.status_msg = f"Round {self.current_round} - {self.teams[self.active_team].name} raids."
-            self.selected_defender = None
-            self.switch_locked = False
-            self.sub_candidate = None
-            self.flash_team = None
-        except Exception as e:
-            raise KabaddiGameException("Next round error!") from e
-
-    def draw(self):
-        # Draw everything onto surface
-        self.draw_court()
-        for t in self.teams:
-            t.draw(self.surface)
-        self.draw_status()
-
-    def update(self):
-        # Main per-frame update: check raid status, round end
-        try:
-            if self.in_raid:
-                self.process_raid()
-            if self.round_over():
-                if self.current_round < NUM_ROUNDS:
-                    self.status_msg = "Round over! Press ENTER for next round."
-                    self.in_raid = False
-                    self.switch_locked = True
-                else:
-                    self.game_over = True
-                    winner = None
-                    if self.teams[0].score > self.teams[1].score:
-                        winner = self.teams[0].name
-                        color = (50, 90, 255)
-                    elif self.teams[0].score < self.teams[1].score:
-                        winner = self.teams[1].name
-                        color = (180, 10, 10)
-                    else:
-                        winner = 'Draw!'
-                        color = (180, 180, 40)
-                    win_txt = f"Game Over! Winner: {winner}"
-                    txt = self.bigfont.render(win_txt, True, color)
-                    self.surface.blit(txt, (SCREEN_WIDTH//2 - 180, SCREEN_HEIGHT//2 - 40))
-        except Exception as e:
-            raise KabaddiGameException("Update error!") from e
-
-# Main game loop
-def main():
-    pygame.init()
-    pygame.display.set_caption("Kabaddi Game")
-    surface = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    clock = pygame.time.Clock()
-    game = KabaddiMatch(surface)
-    game.setup()
-    running = True
-
-    while running:
-        surface.fill((90, 130, 80))
-        events = pygame.event.get()
-        game.handle_events(events)
-        game.update()
-        game.draw()
-        pygame.display.update()
-
-        # Keyboard shortcuts and controls
-        keys = pygame.key.get_pressed()
-        if game.game_over:
-            for event in events:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                    # Restart game
-                    game.setup()
-                    game.game_over = False
+                p.is_raider = False
+            if tidx == self.active_team_idx:
+                team.active_players[0].is_raider = True
+        Logger.log(f"Starting round {self.round_manager.current_round+1}, team {self.teams[self.active_team_idx].name} attacking.")
+    def switch_round(self):
+        self.round_manager.current_round += 1
+        if self.round_manager.current_round < ROUNDS_PER_MATCH:
+            self.round_manager.start_round()
+            self.reset_round()
+            self.state.set_state(GameStateEnum.ROUND_START)
         else:
-            for event in events:
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
-                        # Next raid or next round
-                        if not game.in_raid:
-                            if game.switch_locked and not game.round_over():
-                                # Next raid
-                                game.switch_locked = False
-                                game.status_msg = "Select a Raider with mouse"
-                            elif game.round_over() and game.current_round < NUM_ROUNDS:
-                                game.next_round()
-                                game.switch_locked = False
+            self.state.set_state(GameStateEnum.GAME_OVER)
+    def calculate_score(self):
+        # Points: Successful raid=1+tags, tackle=1 for defending team, out=1 to opposition
+        for team in self.teams:
+            raider = [p for p in team.active_players if p.is_raider]
+            if raider:
+                r = raider[0]
+                opp_team = self.teams[1] if team == self.teams[0] else self.teams[0]
+                if r.state == PlayerState.OUT:
+                    opp_team.score += 1 # tackle/out
+                else:
+                    team.score += 1 # raid success
+                    tags = sum([1 for p in opp_team.active_players if p.state == PlayerState.TAGGED])
+                    team.score += tags
+                    opp_team.score -= tags
+                    if opp_team.score < 0: opp_team.score = 0
+    def raid_end(self):
+        self.calculate_score()
+        self.switch_round()
+    def update(self, dt):
+        actions = self.input_handler.process_events()
+        # State machine
+        if self.state.current_state == GameStateEnum.MENU:
+            if actions['retreat']:
+                self.round_manager.start_round()
+                self.reset_round()
+                self.state.set_state(GameStateEnum.ROUND_START)
+        elif self.state.current_state == GameStateEnum.ROUND_START:
+            self.round_manager.start_round()
+            self.state.set_state(GameStateEnum.RAID)
+        elif self.state.current_state == GameStateEnum.RAID:
+            self.round_manager.update(dt)
+            team = self.teams[self.active_team_idx]
+            opp_team = self.teams[1] if self.active_team_idx == 0 else self.teams[0]
+            raider = [p for p in team.active_players if p.is_raider][0]
+            # Player movement
+            mv = 4*dt*60
+            dx = dy = 0
+            if actions['up']: dy -= mv
+            if actions['down']: dy += mv
+            if actions['left']: dx -= mv
+            if actions['right']: dx += mv
+            raider.move(dx, dy, self.court_rect)
+            if actions['tag']:
+                for defender in opp_team.active_players:
+                    # Tag only if close
+                    if ((raider.position[0]-defender.position[0])**2 + (raider.position[1]-defender.position[1])**2)**0.5 < PLAYER_RADIUS*2 and defender.state == PlayerState.ACTIVE:
+                        raider.tag(defender)
+            # Retreat
+            if actions['retreat']:
+                if (team.side == 'left' and raider.position[0] < SCREEN_WIDTH//2) or (team.side == 'right' and raider.position[0] > SCREEN_WIDTH//2):
+                    self.raid_end()
+            raider.update_breath(dt)
+            for defender in opp_team.active_players:
+                defender.update()
+            self.ai_controller.decide_action(opp_team.active_players, raider, dt)
+            if raider.breath_meter <= 0 or self.round_manager.is_time_up() or raider.state == PlayerState.OUT:
+                self.raid_end()
+        elif self.state.current_state == GameStateEnum.GAME_OVER:
+            if actions['retreat']:
+                # Replay
+                self.round_manager.current_round = 0
+                for team in self.teams:
+                    team.score = 0
+                self.round_manager.start_round()
+                self.reset_round()
+                self.state.set_state(GameStateEnum.ROUND_START)
+            if actions['tag']:
+                pygame.quit()
+                sys.exit()
+        elif self.state.current_state == GameStateEnum.PAUSE:
+            if actions['pause']: # Unpause
+                self.state.set_state(GameStateEnum.RAID)
+        else:
+            # Unhandled state
+            pass
+    def render(self):
+        if self.state.current_state == GameStateEnum.MENU:
+            self.renderer.draw_menu()
+        elif self.state.current_state == GameStateEnum.GAME_OVER:
+            winner = self.teams[0].name if self.teams[0].score > self.teams[1].score else self.teams[1].name if self.teams[0].score != self.teams[1].score else "Draw"
+            self.renderer.draw_game_over(winner, self)
+        else:
+            court_rect = self.renderer.draw_court()
+            self.renderer.draw_players(self.teams)
+            self.renderer.draw_ui(self, self.state)
+        pygame.display.flip()
 
-        clock.tick(FPS)
+# Main Entry Point
+def main():
+    try:
+        pygame.mixer.pre_init(44100, -16, 2, 512) # For low-latency audio (future extension)
+        pygame.init()
+        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption('Kabaddi Game')
+        font = pygame.font.SysFont(FONT_NAME, 32, bold=True)
+        clock = pygame.time.Clock()
+        game = Game(screen, font)
+        dt = 0
+        while True:
+            dt = clock.tick(FPS)/1000.0
+            game.update(dt)
+            game.render()
+    except Exception as e:
+        Logger.log(f"Fatal Error: {e}")
+        pygame.quit()
+        sys.exit()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KabaddiGameException as e:
-        print(f"Game error: {e}")
-        pygame.quit()
-        sys.exit()
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        pygame.quit()
-        sys.exit()
+    main()

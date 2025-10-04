@@ -24,7 +24,7 @@ def run():
         examples = yaml.safe_load(file)
 
     # Default to example2_snake if no argument provided, or use the argument
-    game_key = 'example8_carrom'  # Default game
+    game_key = 'example9_kabaddi'  # Default game
     if len(sys.argv) > 1:
         # Check if the argument is a valid game key
         arg_game_key = sys.argv[1]
