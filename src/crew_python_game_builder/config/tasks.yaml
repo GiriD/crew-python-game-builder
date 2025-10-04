@@ -1,0 +1,74 @@
+code_task:
+  description: >
+    You MUST create complete, executable Python game code based on the following specifications: {game}
+    
+    CRITICAL REQUIREMENTS:
+    - Write ONLY Python code - no explanations, no markdown, no descriptions
+    - The output must be complete, runnable Python code that can be saved as a .py file
+    - Use object-oriented programming principles
+    - Include proper error handling and exception management
+    - Add comprehensive comments explaining the code functionality
+    - Ensure the game is engaging and fun to play
+    - Use appropriate Python libraries (like pygame, turtle, or tkinter)
+    - Follow Python best practices and PEP 8 style guidelines
+    - Make sure the game is complete and playable without any additional setup
+    - Include a main() function and if __name__ == "__main__": block
+    
+    DO NOT provide explanations or descriptions - ONLY provide the complete Python code.
+    The code should be immediately executable when saved as a .py file.
+  expected_output: >
+    ONLY complete, executable Python game code. No explanations, no markdown formatting, 
+    no code blocks. Just pure Python code that includes all necessary imports, 
+    classes, functions, and a main execution block. The code must be ready to run 
+    immediately when saved as a .py file and should implement all specified game features.
+  agent: senior_engineer_agent
+
+review_task:
+  description: >
+    Review the Python game code created by the Senior Engineer for the following game: {game}
+    
+    Your review should focus on:
+    - Code quality and adherence to Python best practices
+    - Game functionality and mechanics
+    - Error handling and edge cases
+    - Code organization and structure
+    - Performance considerations
+    - User experience and game playability
+    - Potential bugs or issues
+    - Security considerations if applicable
+    
+    Provide detailed feedback and recommendations for improvements.
+    Test the code logic mentally and identify any potential issues.
+  expected_output: >
+    A comprehensive code review report that includes:
+    - Overall assessment of code quality
+    - Specific issues found (if any)
+    - Recommendations for improvements
+    - Performance evaluation
+    - Confirmation that the game meets all specified requirements
+    - Any suggestions for enhancements
+  agent: qa_engineer_agent
+
+evaluate_task:
+  description: >
+    As the Chief QA Engineer, provide a final evaluation of the game project based on:
+    1. The original game specifications: {game}
+    2. The code created by the Senior Engineer
+    3. The review conducted by the QA Engineer
+    
+    Your evaluation should determine:
+    - Whether the project meets all requirements
+    - If the code quality meets professional standards
+    - Whether the game is ready for deployment/release
+    - Final approval or recommendations for additional work
+    
+    Provide executive-level feedback and make the final decision on project approval.
+  expected_output: >
+    Executive summary and final project evaluation including:
+    - Project approval status (APPROVED/NEEDS REVISION)
+    - Executive summary of the game project
+    - Key strengths and accomplishments
+    - Any remaining concerns or requirements
+    - Final recommendations for next steps
+    - Overall project quality assessment
+  agent: chief_qa_engineer_agent

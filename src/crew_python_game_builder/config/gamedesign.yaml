@@ -1,0 +1,272 @@
+# Game Design Examples for Game Builder Crew
+# These examples provide specifications for different types of games
+
+example1_pacman:
+  name: "Pac-Man Clone"
+  type: "Arcade Game"
+  description: >
+    Create a simplified Pac-Man style game with the following features:
+    - Player controls a character that moves through a maze
+    - Collectible dots scattered throughout the maze
+    - Ghosts that chase the player
+    - Game over when player collides with ghost
+    - Score tracking based on collected dots
+    - Simple maze layout using ASCII characters or basic graphics
+    - Arrow key controls for movement
+    - Win condition when all dots are collected
+  requirements:
+    - "Use pygame for graphics and input handling"
+    - "Implement collision detection"
+    - "Basic AI for ghost movement"
+    - "Score display"
+    - "Game over and restart functionality"
+
+example2_snake:
+  name: "Snake Game"
+  type: "Classic Arcade Game"  
+  description: >
+    Create a visually appealing modern Snake game with professional design:
+    
+    VISUAL DESIGN REQUIREMENTS:
+    - Modern neon-style snake with gradient colors and glow effects
+    - Professional dark theme background with subtle grid pattern
+    - Animated food items with pulsing glow and particle effects
+    - Smooth snake movement with segmented body animation
+    - Contemporary UI with sleek fonts and rounded corners
+    - Professional score display with modern typography
+    - Animated game over screen with statistics
+    - Particle trails following snake movement
+    - Screen shake effects on collision
+    - Professional color scheme with neon accents
+    
+    GAMEPLAY FEATURES:
+    - Snake starts small and grows when eating food
+    - Animated food with various types and bonus effects
+    - Dynamic collision detection with visual feedback
+    - Progressive speed increase with smooth acceleration
+    - Responsive grid-based movement system
+    - Multiple control schemes (Arrow keys, WASD, mouse)
+    - Professional game over screen with restart options
+    - High score tracking and display
+    
+    UI/UX ENHANCEMENTS:
+    - Modern HUD with real-time score and level display
+    - Smooth transition animations between game states
+    - Professional menu system with options
+    - Visual feedback for all interactions
+    - Responsive button design with hover effects
+    - Loading screen with game branding
+    - Achievement system with visual notifications
+  requirements:
+    - "Modern neon-style visual design"
+    - "Smooth animation system (60+ FPS)"
+    - "Particle effects and visual feedback"
+    - "Professional typography and UI elements"
+    - "Gradient and glow effects"
+    - "Responsive grid-based movement"
+    - "Advanced collision detection with effects"
+    - "Progressive difficulty system"
+    - "Professional game state management"
+    - "High score persistence"
+    - "Multiple control schemes"
+    - "Screen effects and transitions"
+
+example3_pong:
+  name: "Pong Game"
+  type: "Sports/Arcade Game"
+  description: >
+    Create a modern, visually stunning Pong game with professional design:
+    
+    VISUAL DESIGN REQUIREMENTS:
+    - Retro-futuristic design with neon glow effects
+    - Professional gradient background with subtle animations
+    - 3D-style paddles with realistic lighting and shadows
+    - Glowing ball with particle trail effects
+    - Modern scoreboard with LED-style digital fonts
+    - Court boundaries with neon-style lines and corners
+    - Professional color scheme (Cyan, Magenta, White, Dark Blue)
+    - Smooth particle effects on ball collisions
+    - Screen flash effects on scoring
+    - Dynamic background elements and ambient effects
+    
+    GAMEPLAY FEATURES:
+    - Two responsive paddles with smooth movement
+    - Realistic ball physics with spin and acceleration
+    - Progressive speed increase with visual feedback
+    - Score tracking with animated number changes
+    - Professional win celebration screen
+    - Ball reset with dramatic serve animation
+    - Multiple game modes and difficulty levels
+    - Competitive scoring system (first to 11 wins)
+    
+    UI/UX ENHANCEMENTS:
+    - Modern HUD with player names and scores
+    - Professional menu system with game options
+    - Responsive controls with visual feedback
+    - Smooth transitions between game states
+    - Victory screen with statistics and replay option
+    - Professional typography throughout
+    - Interactive pause menu with resume functionality
+  requirements:
+    - "Retro-futuristic visual design with neon effects"
+    - "Advanced particle systems for trail and collision effects"
+    - "Realistic physics simulation with spin mechanics"
+    - "Professional 3D-style paddle and ball rendering"
+    - "Smooth animation system (60+ FPS)"
+    - "Dynamic lighting and glow effects"
+    - "Professional scoreboard with LED-style fonts"
+    - "Screen effects for scoring and collisions"
+    - "Multiple control schemes and responsiveness"
+    - "Advanced game state management"
+    - "Progressive difficulty with visual feedback"
+    - "Professional menu and UI systems"
+
+example4_breakout:
+  name: "Breakout Game"
+  type: "Arcade Game"
+  description: >
+    Create a Breakout/Brick Breaker game with the following features:
+    - Player controls a paddle at the bottom
+    - Ball bounces off paddle, walls, and bricks
+    - Multiple rows of colored bricks to destroy
+    - Player loses life if ball goes off bottom of screen
+    - Game ends when all bricks destroyed or lives run out
+    - Power-ups that fall from destroyed bricks (optional)
+    - Multiple levels with different brick arrangements
+  requirements:
+    - "Brick destruction mechanics"
+    - "Ball physics with realistic bouncing"
+    - "Lives system"
+    - "Level progression"
+    - "Score based on bricks destroyed"
+    - "Paddle movement with mouse or keyboard"
+
+example5_tetris:
+  name: "Simple Tetris"
+  type: "Puzzle Game"
+  description: >
+    Create a simplified Tetris game with the following features:
+    - Different shaped blocks (tetrominoes) fall from top
+    - Player can rotate and move falling pieces
+    - Completed rows disappear and score increases
+    - Game speed increases over time
+    - Game over when pieces reach the top
+    - Line clearing animation
+    - Next piece preview
+    - Level and score display
+  requirements:
+    - "Seven different tetromino shapes"
+    - "Rotation and movement controls"
+    - "Line clearing logic"
+    - "Collision detection"
+    - "Increasing speed/difficulty"
+    - "Game over detection"
+
+example7_snakes_ladders:
+  name: "Snakes and Ladders"
+  type: "Board Game"
+  description: >
+    Create the classic Indian board game Snakes and Ladders with the following features:
+    - 100-square board numbered 1 to 100
+    - Multiple snakes that send players down when landed on
+    - Multiple ladders that help players climb up
+    - 2-4 player support with different colored tokens
+    - Dice rolling with numbers 1-6
+    - Automatic token movement based on dice roll
+    - Win condition when first player reaches square 100
+    - Traditional Indian artwork and colors
+  requirements:
+    - "100-square grid board layout"
+    - "Snake and ladder positioning"
+    - "Multi-player turn system"
+    - "Automatic movement calculation"
+    - "Visual feedback for snakes/ladders"
+    - "Win detection and celebration"
+
+example8_carrom:
+  name: "Carrom Board Game"
+  type: "Sports/Board Game"
+  description: >
+    Create a digital version of Carrom, the popular Indian board game with the following features:
+    - Square wooden board with pockets in corners
+    - White and black coins plus one red queen
+    - Striker disc controlled by mouse/touch
+    - Physics-based coin movement and collisions
+    - Turn-based gameplay between 2-4 players
+    - Scoring system based on pocketed coins
+    - Queen capture rules and covering requirements
+    - Realistic physics for coin interactions
+  requirements:
+    - "Physics engine for realistic movement"
+    - "Mouse control for striker direction and power"
+    - "Collision detection between coins"
+    - "Pocket detection and scoring"
+    - "Queen capture and covering rules"
+    - "Turn management system"
+    - "Visual board with traditional design"
+
+example9_kabaddi:
+  name: "Kabaddi Game"
+  type: "Sports Game"
+  description: >
+    Create a simplified digital version of Kabaddi, the traditional Indian sport with the following features:
+    - Two teams with players positioned on their halves
+    - Raider enters opponent's half to tag defenders
+    - Breath meter system for raider's "kabaddi" chant
+    - Defenders try to tackle the raider before return
+    - Point system for successful raids and tackles
+    - Time-based rounds with team switching
+    - Simple 2D top-down or side-view gameplay
+    - Team management and substitution system
+  requirements:
+    - "Two-team gameplay system"
+    - "Raider movement and tagging mechanics"
+    - "Breath/time limit system"
+    - "Defender AI or two-player control"
+    - "Scoring and point calculation"
+    - "Round-based match structure"
+    - "Visual representation of court and players"
+
+example10_pithu:
+  name: "Pithu (Seven Stones)"
+  type: "Traditional Game"
+  description: >
+    Create a digital version of Pithu (Seven Stones), a popular Indian street game with the following features:
+    - Stack of seven flat stones in the center
+    - Ball throwing to knock down the stone stack
+    - Team trying to rebuild the stack while avoiding the ball
+    - Opposing team trying to hit players with the ball
+    - Time limit for rebuilding the stack
+    - Score based on successful rebuilds vs hits
+    - Simple physics for ball throwing and stone stacking
+    - Multiplayer or AI opponent modes
+  requirements:
+    - "Physics simulation for stones and ball"
+    - "Aiming and throwing mechanics"
+    - "Player movement and collision detection"
+    - "Stack rebuilding interaction"
+    - "Timer and scoring system"
+    - "Team-based gameplay"
+    - "Traditional Indian game aesthetics"
+
+example11_gilli_danda:
+  name: "Gilli Danda"
+  type: "Traditional Sports Game"
+  description: >
+    Create a digital version of Gilli Danda, a traditional Indian game with the following features:
+    - Small wooden piece (gilli) and long stick (danda)
+    - Player hits the gilli to make it fly in the air
+    - Timing-based hitting mechanism for maximum distance
+    - Distance measurement and scoring system
+    - Wind effects and trajectory physics
+    - Multiple rounds with increasing difficulty
+    - Traditional Indian village setting and graphics
+    - Power meter for hit strength control
+  requirements:
+    - "Physics-based trajectory system"
+    - "Timing-based hitting mechanics"
+    - "Distance calculation and scoring"
+    - "Wind and environmental effects"
+    - "Progressive difficulty levels"
+    - "Traditional visual theme"
+    - "Power and accuracy controls"
