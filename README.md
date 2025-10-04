@@ -31,8 +31,8 @@ An AI-powered game development system that uses **CrewAI** multi-agent collabora
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python >=3.10 <3.14
-- OpenAI API Key
+- Python >=3.10 <3.14  
+- OpenAI API Key or Azure OpenAI Service
 
 ### Installation
 
@@ -47,14 +47,23 @@ crewai install
 ```
 
 3. **Setup Environment**:
-Create a `.env` file and add your OpenAI API key:
+Create a `.env` file and add your API configuration:
+
+**For OpenAI:**
 ```env
 OPENAI_API_KEY=your_api_key_here
 ```
 
+**For Azure OpenAI:**
+```env
+AZURE_API_KEY=your_azure_api_key
+AZURE_API_BASE=https://your-resource.openai.azure.com/
+AZURE_API_VERSION=2024-12-01-preview
+```
+
 4. **Generate Your First Game**:
 ```bash
-# Generate the default Snake game
+# Generate the default game
 crewai run
 
 # Or generate a specific game
@@ -73,26 +82,28 @@ python output/snake_game/generated_game.py
 ## 🎯 Usage
 
 ### 🎮 Generate Games
-Simple command-line usage with a single argument:
 
+**Basic Usage:**
 ```bash
-# Generate default game (Snake Game)
+# Generate default game
 crewai run
 
+# Generate specific game
+crewai run snake
+crewai run pong
+```
+
+**Game Selection:**
+```bash
 # Generate specific game by key
 crewai run example1_pacman
 crewai run example2_snake
 crewai run example3_pong
-crewai run example4_breakout
-crewai run example5_tetris
 
-# Generate specific game by name (partial matching)
+# Generate by name (partial matching)
 crewai run snake
-crewai run pong
 crewai run tetris
-crewai run pacman
 crewai run carrom
-crewai run kabaddi
 ```
 
 ### 🎲 Available Game Keys
@@ -160,7 +171,7 @@ crewai replay task_123              # Replay a task
 
 ## 🤖 AI Agent System
 
-The system uses **three specialized AI agents** working collaboratively:
+The system uses **five specialized AI agents** working collaboratively:
 
 ### 👨‍💻 Senior Engineer Agent
 - **Role**: Lead game developer and architect

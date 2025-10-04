@@ -3,718 +3,880 @@ import sys
 import math
 import random
 import time
+import traceback
+from pygame import gfxdraw
 
-# Initialize pygame
-pygame.init()
-
-# Constants
-SCREEN_WIDTH, SCREEN_HEIGHT = 1000, 650
+# =============================
+# Game Constants and Settings
+# =============================
+SCREEN_WIDTH = 1024
+SCREEN_HEIGHT = 640
 FPS = 60
+PADDLE_WIDTH = 26
+PADDLE_HEIGHT = 126
+BALL_SIZE = 28
+PADDLE_OFFSET = 54
+MAX_SCORE = 11
+SERVE_ANIM_TIME = 0.38
 
-# Colors (Retro-futuristic Neon Theme)
-CYAN = (0, 255, 255)
-MAGENTA = (255, 0, 220)
-WHITE = (255, 255, 255)
-DARK_BLUE = (12, 18, 48)
-NEON_BLUE = (30, 255, 255)
-NEON_PINK = (255, 60, 255)
-NEON_SHADOW = (0, 5, 30)
-GRAY = (122, 122, 164)
+# Color Palette (RGB)
+NEON_CYAN = (20, 255, 247)
+NEON_MAGENTA = (250, 36, 162)
+NEON_WHITE = (255, 255, 255)
+DEEP_NAVY_BLUE = (14, 19, 48)
+DARK_BLUE = (35, 43, 96)
+SOFT_PURPLE = (112, 21, 252)
+LED_GREEN = (50, 255, 118)
+PALE_GREY = (211, 218, 228)
 
-# Game Settings
-PADDLE_WIDTH = 22
-PADDLE_HEIGHT = 120
-PADDLE_SPEED = 7
-BALL_RADIUS = 19
-INIT_BALL_SPEED = 7
-MAX_BALL_SPEED = 16
-BALL_ACCELERATION = 0.12
-BALL_SPIN_FACTOR = 0.45
-WIN_SCORE = 11
-SCORE_ANIM_TIME = 0.33
+BG_GRAD_TOP = DARK_BLUE
+BG_GRAD_MID = DEEP_NAVY_BLUE
+BG_GRAD_BOT = SOFT_PURPLE
 
-# LED font
-LED_FONT_PATH = None  # Use default system font if not found
-LED_FONT_SIZE = 72
-MENU_FONT_SIZE = 34
+# Paths to assets (fonts must exist or use pygame fallback)
+FONTS = {
+    "score": "assets/fonts/Orbitron-Bold.ttf",
+    "menu":  "assets/fonts/Rajdhani-Semibold.ttf",
+    "hud":   "assets/fonts/RobotoMono-Medium.ttf",
+}
+MUSIC_PATH = "assets/music/main_theme.ogg"
+SFX = {
+    "hit_paddle": "assets/sounds/ball_hit_paddle.wav",
+    "hit_wall": "assets/sounds/ball_hit_wall.wav",
+    "score": "assets/sounds/goal_explosion.wav",
+    "serve": "assets/sounds/serve_release.wav",
+    "score_flip": "assets/sounds/score_flip.wav",
+    "win": "assets/sounds/win_fanfare.wav",
+    "menu_beep": "assets/sounds/menu_beep.wav",
+    "menu_confirm": "assets/sounds/menu_confirm.wav",
+    "pause_in": "assets/sounds/pause_in.wav",
+    "pause_out": "assets/sounds/pause_out.wav",
+    "error": "assets/sounds/ui_error.wav"
+}
 
-# Game Modes
-GAME_MODES = [
-    {'name': 'Classic', 'ai_level': 1, 'description': 'Retro-Futuristic Pong.'},
-    {'name': 'Pro', 'ai_level': 2, 'description': 'Faster Ball. Smarter AI.'},
-    {'name': 'Spin Master', 'ai_level': 2, 'description': 'Add spin to shots.'}
-]
+# Neon Glow Simulation Settings
+NEON_GLOW_BLUR = 8
+NEON_PARTICLE_POOL = 146
 
-# Exception Classes
-class GameException(Exception):
-    pass
+# =============================
+# Utility Functions
+# =============================
+def clamp(x, minimum, maximum):
+    return max(minimum, min(x, maximum))
 
-# Utilities
-def load_font(path, size):
-    # Load LED font if available, else system font
-    try:
-        return pygame.font.Font(path, size)
-    except Exception:
-        return pygame.font.SysFont('Consolas', size, bold=True)
+def ease_out_quad(t):
+    return -(t*(t-2))
 
-def gradient_surface(width, height, color_top, color_bottom, animated_offset=0):
-    """Creates a vertical gradient surface, with optional animation."""
-    surface = pygame.Surface((width, height))
-    for y in range(height):
-        mix = y / height
-        offset = math.sin((y + animated_offset) / 50.0) * 50
-        r = int(color_top[0] * (1 - mix) + color_bottom[0] * mix)
-        g = int(color_top[1] * (1 - mix) + color_bottom[1] * mix)
-        b = int(color_top[2] * (1 - mix) + color_bottom[2] * mix)
-        pygame.draw.line(surface, (max(0,min(255,r+offset)), max(0,min(255,g)), max(0,min(255,b+offset))), (0, y), (width, y))
-    return surface
+def lerp(a, b, t):
+    return a + (b-a) * t
 
-def neon_glow_blit(surface, image, pos, color, intensity=4, alpha=100):
-    # Blit glow effect behind image
-    glow = pygame.Surface(image.get_size(), pygame.SRCALPHA)
-    glow.fill((0,0,0,0))
-    for i in range(1, intensity+1):
-        pygame.draw.rect(
-            glow,
-            (color[0], color[1], color[2], int(alpha/i)),
-            pygame.Rect(-i, -i, image.get_width()+2*i, image.get_height()+2*i),
-            border_radius=18
-        )
-    surface.blit(glow, pos)
-    surface.blit(image, pos)
+def color_lerp(c1, c2, t):
+    return tuple([int(lerp(c1[i], c2[i], t)) for i in range(3)])
 
-def draw_neon_line(surface, color, start_pos, end_pos, width=4, glow_radius=9):
-    # Draw neon-glow line with core and shadow
-    shadow_color = (color[0]//8, color[1]//8, color[2]//8)
-    pygame.draw.line(surface, shadow_color, start_pos, end_pos, width+glow_radius)
-    pygame.draw.line(surface, color, start_pos, end_pos, width)
+# =============================
+# Resource Manager
+# =============================
+class ResourceManager:
+    fonts = {}
+    sounds = {}
+    music_loaded = False
+    initialized = False
 
-def draw_neon_rect(surface, rect, color, width=6, glow_radius=10):
-    # Neon glowing rectangle (court boundary)
-    glow_color = (color[0]//4, color[1]//4, color[2]//4)
-    pygame.draw.rect(surface, glow_color, rect.inflate(glow_radius*2, glow_radius*2), border_radius=24)
-    pygame.draw.rect(surface, color, rect, width, border_radius=16)
+    @classmethod
+    def init(cls):
+        if cls.initialized:
+            return
+        # Fonts
+        for k, path in FONTS.items():
+            try:
+                cls.fonts[k] = pygame.font.Font(path, 64 if k == "score" else (32 if k == "menu" else 20))
+            except Exception:
+                cls.fonts[k] = pygame.font.SysFont("Arial", 64 if k == "score" else (32 if k == "menu" else 20), bold=True)
+        # Sounds
+        for s, p in SFX.items():
+            try:
+                cls.sounds[s] = pygame.mixer.Sound(p)
+            except Exception:
+                cls.sounds[s] = None
+        try:
+            pygame.mixer.music.load(MUSIC_PATH)
+            cls.music_loaded = True
+        except Exception:
+            cls.music_loaded = False
+        cls.initialized = True
 
-def led_text(surf, text, font, pos, color, glow=6):
-    # Draw glowing LED-style text
-    x, y = pos
-    txt_surface = font.render(text, True, color)
-    if glow:
-        for i in range(glow, 0, -2):
-            glow_txt = font.render(text, True, (color[0]//2, color[1]//2, color[2]//3))
-            surf.blit(glow_txt, (x-i, y-i))
-            surf.blit(glow_txt, (x+i, y+i))
-    surf.blit(txt_surface, (x, y))
+    @classmethod
+    def get_font(cls, name):
+        return cls.fonts.get(name, pygame.font.SysFont("Arial", 32, bold=True))
 
-# Particle System: Ball trail and collision effects
+    @classmethod
+    def play_sound(cls, name, volume=1.0):
+        s = cls.sounds.get(name)
+        if s:
+            s.set_volume(volume)
+            s.play()
+
+# =============================
+# Particle System (Object pool)
+# =============================
 class Particle:
-    def __init__(self, x, y, color, vx, vy, size, life):
-        self.x = x
-        self.y = y
+    def __init__(self):
+        self.active = False
+        self.x = 0
+        self.y = 0
+        self.vx = 0
+        self.vy = 0
+        self.life = 0.0
+        self.color = NEON_CYAN
+        self.size = 8
+        self.alpha = 1.0
+        self.type = "trail"
+
+    def spawn(self, x, y, vx, vy, color, size, life, alpha, ptype="trail"):
+        self.active = True
+        self.x, self.y = x, y
+        self.vx, self.vy = vx, vy
         self.color = color
-        self.vx = vx
-        self.vy = vy
         self.size = size
         self.life = life
-        self.max_life = life
-
-    def update(self):
-        self.x += self.vx
-        self.y += self.vy
-        self.life -= 1
-
-    def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
-        s = pygame.Surface((self.size*2, self.size*2), pygame.SRCALPHA)
-        pygame.draw.circle(s, (*self.color, alpha), (self.size, self.size), int(self.size))
-        surface.blit(s, (int(self.x-self.size), int(self.y-self.size)))
-
-class ParticleSystem:
-    def __init__(self):
-        self.particles = []
-
-    def emit(self, x, y, color, n=15, speed=4):
-        for _ in range(n):
-            angle = random.uniform(0, math.pi * 2)
-            vx = math.cos(angle) * random.uniform(0.5, speed)
-            vy = math.sin(angle) * random.uniform(0.5, speed)
-            size = random.randint(2, 7)
-            life = random.randint(12, 27)
-            self.particles.append(Particle(x, y, color, vx, vy, size, life))
-
-    def trail(self, x, y, color, n=2, speed=0.7):
-        # Generate trailing particles (smaller, slower)
-        for _ in range(n):
-            angle = random.uniform(-0.6, 0.6)
-            vx = math.cos(angle) * random.uniform(0, speed)
-            vy = math.sin(angle) * random.uniform(0, speed)
-            size = random.randint(2, 4)
-            life = random.randint(6, 18)
-            self.particles.append(Particle(x, y, color, vx, vy, size, life))
-
-    def update(self):
-        for p in self.particles[:]:
-            p.update()
-            if p.life < 0:
-                self.particles.remove(p)
-
-    def draw(self, surface):
-        for p in self.particles:
-            p.draw(surface)
-
-# Paddle Class
-class Paddle:
-    def __init__(self, x, y, width, height, color, name="Player", is_ai=False):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        self.color = color
-        self.score = 0
-        self.name = name
-        self.velocity = 0
-        self.is_ai = is_ai
-        self.target_y = y
-        self.glow_intensity = 0
-        self.shadow_offset = 12
-        self.spin_dir = 0  # Used for ball spin
-
-    def move(self, dy):
-        self.velocity = dy
-        self.y += dy
-        self.y = max(40, min(SCREEN_HEIGHT - self.height - 40, self.y))
-
-    def update_ai(self, ball, difficulty=1):
-        # Simple: Follow ball slowly. Difficulty adds challenge.
-        aim_y = ball.y - self.height//2
-        if difficulty == 1:
-            speed = PADDLE_SPEED * 0.78
-        elif difficulty == 2:
-            speed = PADDLE_SPEED * 1.14
-        else:
-            speed = PADDLE_SPEED * 1.24
-        if abs(self.y - aim_y) > speed:
-            if self.y < aim_y:
-                self.move(speed)
-                self.spin_dir = 1
-            else:
-                self.move(-speed)
-                self.spin_dir = -1
-        else:
-            self.spin_dir = 0
-
-    def draw(self, surface):
-        # Paddle with neon glow and shadow. Simulate 3D style via gradients and shadow
-        shadow_rect = pygame.Rect(int(self.x + self.shadow_offset), int(self.y + self.shadow_offset), self.width, self.height)
-        pygame.draw.rect(surface, NEON_SHADOW, shadow_rect, border_radius=18)
-        paddle_rect = pygame.Rect(int(self.x), int(self.y), self.width, self.height)
-        grad = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        for i in range(self.height):
-            mix = i / self.height
-            r = int(self.color[0] * (1-mix) + WHITE[0] * mix)
-            g = int(self.color[1] * (1-mix) + WHITE[1] * mix)
-            b = int(self.color[2] * (1-mix) + WHITE[2] * mix)
-            pygame.draw.line(grad, (r, g, b, 230), (0,i), (self.width,i))
-        neon_glow_blit(surface, grad, (self.x, self.y), self.color)
-        # Neon edge
-        pygame.draw.rect(surface, self.color, paddle_rect, 6, border_radius=18)
-        # Neon glow
-        for i in range(3,11,2):
-            pygame.draw.rect(surface, (self.color[0], self.color[1], self.color[2], 33), paddle_rect.inflate(i,i), border_radius=22)
-
-# Ball Class
-class Ball:
-    def __init__(self, x, y, radius, color):
-        self.x = x
-        self.y = y
-        self.radius = radius
-        self.color = color
-        self.vx = random.choice((1, -1)) * INIT_BALL_SPEED
-        self.vy = random.uniform(-3.5, 3.5)
-        self.speed = abs(self.vx)
-        self.spin = 0
-        self.state = 'moving'
-        self.serve_anim_pct = 0
-        self.serve_dir = 1
-        self.last_collision_time = 0
-
-    def serve_reset(self, direction=1):
-        # Dramatic serve animation
-        self.x = SCREEN_WIDTH // 2
-        self.y = SCREEN_HEIGHT // 2
-        self.speed = INIT_BALL_SPEED
-        self.spin = 0
-        self.state = 'serving'
-        self.serve_anim_pct = 0
-        self.serve_dir = direction
-        self.vx = 0.01  # minimal movement during serve
-        self.vy = 0
-
-    def start_move(self):
-        angle = random.uniform(-0.25, 0.25)
-        self.vx = self.serve_dir * self.speed * math.cos(angle)
-        self.vy = self.speed * math.sin(angle)
-        self.state = 'moving'
-        self.last_collision_time = time.time()
-
-    def update(self, paddles, particles, mode_features):
-        # Serve animation
-        if self.state == 'serving':
-            self.serve_anim_pct += 0.043
-            bounce_amp = 32 * math.sin(self.serve_anim_pct * math.pi)
-            self.x = SCREEN_WIDTH//2 + self.serve_dir * (180 * self.serve_anim_pct)
-            self.y = SCREEN_HEIGHT // 2 + bounce_amp
-            if self.serve_anim_pct > 0.93:
-                self.start_move()
-            return
-
-        # Normal movement
-        self.x += self.vx
-        self.y += self.vy
-
-        # Wall collision
-        if self.y < BALL_RADIUS + 28:
-            self.y = BALL_RADIUS + 28
-            self.vy *= -1
-            particles.emit(self.x, self.y-BALL_RADIUS, CYAN, n=26, speed=4)
-            # Wall collision glow
-        elif self.y > SCREEN_HEIGHT - BALL_RADIUS - 28:
-            self.y = SCREEN_HEIGHT - BALL_RADIUS - 28
-            self.vy *= -1
-            particles.emit(self.x, self.y+BALL_RADIUS, MAGENTA, n=24, speed=4)
-
-        # Paddle collisions
-        for paddle in paddles:
-            pr = pygame.Rect(paddle.x, paddle.y, paddle.width, paddle.height)
-            br = pygame.Rect(self.x-BALL_RADIUS, self.y-BALL_RADIUS, BALL_RADIUS*2, BALL_RADIUS*2)
-            if pr.colliderect(br):
-                now = time.time()
-                # Prevent double collision per frame
-                if now - self.last_collision_time < 0.1:
-                    continue
-                self.last_collision_time = now
-                hit_pos = ((self.y - paddle.y) / paddle.height - 0.5) * 2
-                spin_factor = BALL_SPIN_FACTOR * paddle.velocity if mode_features['spin'] else 0
-                if paddle.spin_dir != 0 and mode_features['spin']:
-                    # More spin at edge hits
-                    spin_factor += paddle.spin_dir * abs(hit_pos) * 1.8
-                self.vx = (abs(self.vx)+BALL_ACCELERATION) * (-1 if self.vx > 0 else 1)
-                self.vx += spin_factor
-                self.vy = (self.vy + hit_pos * 4.2 + spin_factor) * 0.82  # More edge impact
-                self.speed = min(MAX_BALL_SPEED, abs(self.vx))
-                # Visual feedback: Glow and particles
-                particles.emit(self.x, self.y, paddle.color, n=random.randint(16,30), speed=abs(self.vx)//2+3)
-                self.color = paddle.color
-                # For progressive difficulty: glow effect, screen flash handled in main loop
-
-        # Ball trail effect
-        particles.trail(self.x, self.y, self.color, n=3, speed=1.2)
-
-    def draw(self, surface):
-        # 3D-style, glowing, neon ball with glow and shadow
-        s = pygame.Surface((self.radius*2+32, self.radius*2+32), pygame.SRCALPHA)
-        # Ball shadow
-        pygame.draw.circle(s, NEON_SHADOW, (self.radius+14, self.radius+19), self.radius+10)
-        # Neon glow layers
-        for g in range(12, 0, -2):
-            pygame.draw.circle(s, (self.color[0], self.color[1], self.color[2], 18+g*4), (self.radius+12, self.radius+12), self.radius+g)
-        # Main ball
-        pygame.draw.circle(s, self.color, (self.radius+12, self.radius+12), self.radius)
-        pygame.draw.circle(s, WHITE, (self.radius+12, self.radius+12), int(self.radius*0.82))
-        # Inner glow
-        pygame.draw.circle(s, (self.color[0], self.color[1], self.color[2], 55), (self.radius+12, self.radius+12), int(self.radius*0.67))
-        surface.blit(s, (int(self.x-self.radius-12), int(self.y-self.radius-12)))
-        # Additional particle effects drawn elsewhere
-
-# Scoreboard & HUD
-class Scoreboard:
-    def __init__(self, font, led_font, player1, player2):
-        self.font = font
-        self.led_font = led_font
-        self.player1 = player1
-        self.player2 = player2
-        self.anim = [0.0, 0.0]  # score animation (pct)
-
-    def flash_score(self, who):
-        # Animate score on scoring
-        self.anim[who] = SCORE_ANIM_TIME
+        self.alpha = alpha
+        self.type = ptype
 
     def update(self, dt):
-        # Update score animations
-        for i in range(2):
-            self.anim[i] = max(0, self.anim[i] - dt)
+        if not self.active:
+            return
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.life -= dt
+        self.alpha = clamp(self.alpha - 1.1*dt, 0, 1)
+        if self.life <= 0 or self.alpha <= 0.02:
+            self.active = False
 
-    def draw(self, surf):
-        # Draw modern LED-style scoreboard
-        x1 = SCREEN_WIDTH//2 - 168
-        x2 = SCREEN_WIDTH//2 + 72
-        y = 65
-        s1 = str(self.player1.score)
-        s2 = str(self.player2.score)
-        # Animated Score Change
-        if self.anim[0] > 0:
-            sz = int(LED_FONT_SIZE+19*math.sin(5*self.anim[0]))
-        else:
-            sz = LED_FONT_SIZE
-        score_font1 = load_font(LED_FONT_PATH, sz)
-        if self.anim[1] > 0:
-            sz2 = int(LED_FONT_SIZE+22*math.sin(4*self.anim[1]))
-        else:
-            sz2 = LED_FONT_SIZE
-        score_font2 = load_font(LED_FONT_PATH, sz2)
-        led_text(surf, s1, score_font1, (x1, y), CYAN)
-        led_text(surf, s2, score_font2, (x2, y), MAGENTA)
-        # Player Names
-        name_font = load_font(None, 26)
-        led_text(surf, self.player1.name, name_font, (x1, y+66), CYAN, glow=2)
-        led_text(surf, self.player2.name, name_font, (x2, y+66), MAGENTA, glow=2)
-        # Score divider
-        pygame.draw.rect(surf, WHITE, (SCREEN_WIDTH//2-11, y+17, 22, 8), border_radius=6)
+class ParticlePool:
+    def __init__(self, pool_size=NEON_PARTICLE_POOL):
+        self.pool = [Particle() for _ in range(pool_size)]
 
-# Neon Court
-class NeonCourt:
-    def __init__(self, margin=64):
-        self.rect = pygame.Rect(margin, margin, SCREEN_WIDTH-2*margin, SCREEN_HEIGHT-2*margin)
-
-    def draw(self, surface):
-        # Neon boundary
-        draw_neon_rect(surface, self.rect, NEON_BLUE, width=6, glow_radius=12)
-        # Dotted Center Line
-        for y in range(self.rect.top, self.rect.bottom, 36):
-            pygame.draw.rect(surface, WHITE, (SCREEN_WIDTH//2-4, y, 8, 22), border_radius=9)
-        # Neon corners
-        for dx in [self.rect.left, self.rect.right-1]:
-            for dy in [self.rect.top, self.rect.bottom-1]:
-                pygame.draw.circle(surface, NEON_PINK, (dx, dy), 16)
-
-# Menu System
-class Menu:
-    def __init__(self, game_modes):
-        self.game_modes = game_modes
-        self.selected = 0
-        self.font = load_font(None, MENU_FONT_SIZE)
-        self.big_font = load_font(None, 66)
-        self.active = True
-
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_UP, pygame.K_w]:
-                self.selected = (self.selected - 1) % len(self.game_modes)
-            elif event.key in [pygame.K_DOWN, pygame.K_s]:
-                self.selected = (self.selected + 1) % len(self.game_modes)
-            elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
-                return 'select'
-            elif event.key == pygame.K_ESCAPE:
-                return 'quit'
-        elif event.type == pygame.QUIT:
-            return 'quit'
+    def spawn(self, *args, **kwargs):
+        for p in self.pool:
+            if not p.active:
+                p.spawn(*args, **kwargs)
+                return p
         return None
 
-    def draw(self, surf, anim_phase):
-        surf.fill(DARK_BLUE)
-        t = int(time.time() * 2)
-        # Animated gradient background
-        grad = gradient_surface(SCREEN_WIDTH, SCREEN_HEIGHT, (2,10,22), (8,28,70), animated_offset=anim_phase*24)
-        surf.blit(grad, (0,0))
-        # Animated neon title
-        neon_title = 'NEON PONG'
-        title_font = load_font(None, 69)
-        led_text(surf, neon_title, title_font, (SCREEN_WIDTH//2-190, 96), NEON_PINK, glow=8)
-        # Instructions
-        instr_font = load_font(None, 23)
-        led_text(surf, "UP/DOWN or W/S to Select. ENTER to Start.", instr_font, (SCREEN_WIDTH//2-180, 185), WHITE, glow=3)
-        for i, gm in enumerate(self.game_modes):
-            y = SCREEN_HEIGHT//2 - 44 + i*74
-            col = CYAN if i == self.selected else GRAY
-            led_text(surf, gm['name'], self.big_font, (SCREEN_WIDTH//2-110, y), col, glow=9 if i == self.selected else 3)
-            desc_col = WHITE if i == self.selected else GRAY
-            led_text(surf, gm['description'], self.font, (SCREEN_WIDTH//2-94, y+52), desc_col, glow=3)
-        # Neon effect under selection
-        pygame.draw.rect(surf, NEON_BLUE, (SCREEN_WIDTH//2-120, SCREEN_HEIGHT//2 - 44 + self.selected*74+68, 300, 6), border_radius=4)
+    def update(self, dt):
+        for p in self.pool:
+            if p.active:
+                p.update(dt)
 
-class PauseMenu:
+    def render(self, surface):
+        for p in self.pool:
+            if p.active:
+                s = int(p.size * (0.9 + 0.1*p.alpha))
+                color = tuple(
+                    int(clamp(pc * p.alpha + 40 * (1-p.alpha), 0, 255)) for pc in p.color
+                )
+                if p.type == "trail":
+                    pygame.gfxdraw.filled_circle(surface, int(p.x), int(p.y), s, color)
+                    pygame.gfxdraw.aacircle(surface, int(p.x), int(p.y), s, color)
+                elif p.type == "burst":
+                    pygame.gfxdraw.filled_circle(surface, int(p.x), int(p.y), int(s*1.25), color)
+                    pygame.gfxdraw.aacircle(surface, int(p.x), int(p.y), int(s*1.25), color)
+
+# =============================
+# Paddle Entity
+# =============================
+class Paddle:
+    def __init__(self, x, y, color, player_id, control_scheme):
+        self.x = x
+        self.y = y
+        self.vy = 0.0
+        self.width = PADDLE_WIDTH
+        self.height = PADDLE_HEIGHT
+        self.color = color
+        self.player_id = player_id
+        self.control_scheme = control_scheme
+        self.score = 0
+        self.glow = 0.0
+        self.last_hit_time = 0.0
+        self.shadow_alpha = 0.26
+        self.name = "PLAYER " + str(player_id+1)
+        self.glow_pulse = 0.0 # For post-hit effect
+
+    def move(self, dir, dt, speed_scale):
+        self.vy = 0.0
+        if dir == -1:
+            self.vy = -420 * speed_scale
+        elif dir == 1:
+            self.vy = 420 * speed_scale
+        self.y += self.vy * dt
+        self.y = clamp(self.y, 8, SCREEN_HEIGHT - self.height - 8)
+
+    def ai_control(self, ball, dt):
+        target = clamp(ball.y - self.height//2, 0, SCREEN_HEIGHT - self.height)
+        # Smooth follow
+        delta = target - self.y
+        self.vy = clamp(delta * dt * 7, -340, 340)
+        self.y += self.vy * dt
+        self.y = clamp(self.y, 8, SCREEN_HEIGHT - self.height - 8)
+
+    def render(self, surface, pulse_flash=0.0):
+        # Shadow
+        shadow_col = (DEEP_NAVY_BLUE[0], DEEP_NAVY_BLUE[1], DEEP_NAVY_BLUE[2], int(255*self.shadow_alpha))
+        shadow_rect = pygame.Rect(int(self.x+8), int(self.y+10), self.width, self.height)
+        pygame.draw.rect(surface, DEEP_NAVY_BLUE, shadow_rect, border_radius=12)
+        # Body
+        neon_bright = tuple([clamp(int(c*1.28+40*pulse_flash), 0,255) for c in self.color])
+        paddle_rect = pygame.Rect(int(self.x), int(self.y), self.width, self.height)
+        pygame.draw.rect(surface, neon_bright, paddle_rect, border_radius=18)
+        # Neon Edge
+        edge_col = tuple([clamp(int(c*0.68+180*pulse_flash),0,255) for c in self.color])
+        pygame.draw.rect(surface, edge_col, paddle_rect, 5, border_radius=18)
+        # 3D Highlight Contours
+        pygame.draw.rect(surface, NEON_WHITE, (self.x+3, self.y+9, self.width-6, max(9, self.height//8)), border_radius=8)
+        # Glow simulation (multiple alpha rects)
+        for i in range(5):
+            glow_lvl = int(40*pulse_flash + 46 - i*10)
+            glow_alpha = clamp(90 - i*15 + 65*pulse_flash, 0, 150)
+            glow_rect = paddle_rect.inflate(10+i*5,10+i*4)
+            surf = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(surf, (*self.color, glow_alpha), surf.get_rect(), border_radius=18)
+            surface.blit(surf, glow_rect.topleft)
+
+# =======================
+# Ball Entity
+# =======================
+class Ball:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.vx = 0.0
+        self.vy = 0.0
+        self.size = BALL_SIZE
+        self.spin = 0.0
+        self.color = NEON_WHITE
+        self.glow = 0.9
+        self.trail_points = []
+        self.in_serve_anim = False
+        self.serve_time = 0.0
+        self.max_speed = 880.0
+        self.last_collision_time = 0.0
+        self.trail_length = 14
+        self.trail_alpha_decay = 0.098
+        self.last_pos = (x, y)
+
+    def update_physics(self, dt):
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        # Friction for spin
+        if abs(self.spin) > 0.01:
+            self.spin *= (0.97 - 0.0007*dt)
+        else:
+            self.spin = 0.0
+        # Clamp speeds
+        speed = math.hypot(self.vx, self.vy)
+        if speed > self.max_speed:
+            f = self.max_speed/speed
+            self.vx *= f
+            self.vy *= f
+        self.trail_points.insert(0, (self.x, self.y))
+        if len(self.trail_points) > self.trail_length:
+            self.trail_points = self.trail_points[:self.trail_length]
+        self.last_pos = (self.x, self.y)
+
+    def apply_spin(self, paddle, collide_norm, dt):
+        self.spin += paddle.vy * 0.0048
+        norm_v = math.hypot(self.vx, self.vy)
+        if norm_v > 30:
+            self.vx += self.spin * collide_norm[0] * 6.5
+            self.vy += self.spin * collide_norm[1] * 3.3
+
+    def trigger_particle_effect(self, pool, is_burst=False):
+        # Ball trail or collision burst
+        color = NEON_CYAN if not is_burst else NEON_MAGENTA
+        for i in range(random.randint(14,22) if not is_burst else random.randint(24,36)):
+            angle = random.uniform(0,math.pi*2) if is_burst else None
+            speed = random.uniform(85,165) if is_burst else random.uniform(32,52)
+            if is_burst:
+                vx = math.cos(angle) * speed
+                vy = math.sin(angle) * speed
+            else:
+                vx = random.uniform(-7,7)
+                vy = random.uniform(-7,7)
+            alpha = random.uniform(0.7,1.0)
+            pool.spawn(
+                self.x, self.y,
+                vx, vy,
+                color,
+                random.randint(8,15) if not is_burst else random.randint(11,21),
+                random.uniform(0.22,0.34) if not is_burst else random.uniform(0.36,0.58),
+                alpha,
+                ptype = "trail" if not is_burst else "burst"
+            )
+
+    def reset(self, serve_left, speed_scale=1.0, dramatic=False):
+        self.x = SCREEN_WIDTH//2
+        self.y = SCREEN_HEIGHT//2 + random.randint(-48, 48)
+        angle = math.radians(random.uniform(28, 42))
+        direction = -1 if serve_left else 1
+        base_speed = 480.0 * speed_scale
+        self.vx = math.cos(angle)*base_speed*direction
+        self.vy = math.sin(angle)*base_speed * (1 if random.random()>0.4 else -1)
+        self.spin = 0.0
+        self.in_serve_anim = dramatic
+        self.serve_time = 0.0
+        self.max_speed = 880.0 * speed_scale
+        self.trail_points.clear()
+        self.last_collision_time = 0.0
+
+    def serve_animation(self, dt):
+        self.serve_time += dt
+
+    def render(self, surface, flash_f=0.0):
+        # Under Ball Shadow
+        shadow_col = color_lerp(DEEP_NAVY_BLUE, PALE_GREY, 0.17)
+        s_rect = pygame.Rect(int(self.x-BALL_SIZE//2+8), int(self.y-BALL_SIZE//2+8), BALL_SIZE, BALL_SIZE)
+        surf_shadow = pygame.Surface(s_rect.size, pygame.SRCALPHA)
+        pygame.draw.ellipse(surf_shadow, (*shadow_col, int(66+38*flash_f)), surf_shadow.get_rect())
+        surface.blit(surf_shadow, s_rect.topleft)
+        # Ball Glow Layer
+        glow_rad = int(self.size*1.55)
+        glow_surf = pygame.Surface((glow_rad*2,glow_rad*2), pygame.SRCALPHA)
+        for g in range(9,0,-1):
+            c_val = int(220 + g*4 * flash_f)
+            col = color_lerp(NEON_CYAN, NEON_WHITE, g/9)
+            pygame.gfxdraw.filled_circle(glow_surf, glow_rad, glow_rad, int(glow_rad*0.7)+g*2, (*col, clamp(58+g*17-int(80*flash_f),0,180)))
+        bs = int(self.size / 2)
+        pygame.gfxdraw.filled_circle(surface, int(self.x), int(self.y), bs, NEON_WHITE)
+        surface.blit(glow_surf, (self.x-glow_rad, self.y-glow_rad), special_flags=pygame.BLEND_ADD)
+        # Ball edge neon
+        pygame.gfxdraw.aacircle(surface, int(self.x), int(self.y), bs, NEON_CYAN)
+        # Optionally, draw smiley face on ball for feedback (optional, fun)
+
+# =======================
+# Physics Engine
+# =======================
+class PhysicsEngine:
+    def __init__(self, paddles, ball):
+        self.paddles = paddles
+        self.ball = ball
+        self.court_rect = pygame.Rect(PADDLE_OFFSET, 12, SCREEN_WIDTH - PADDLE_OFFSET*2, SCREEN_HEIGHT-24)
+        self.difficulty_scale = 1.0
+
+    def update(self, dt, pool, score_cb):
+        self.ball.update_physics(dt)
+        # Ball collisions: paddles/court boundaries
+        b = self.ball
+        scored = None
+        # Paddle collisions
+        for p in self.paddles:
+            paddle_rect = pygame.Rect(int(p.x), int(p.y), p.width, p.height)
+            ball_rect = pygame.Rect(int(b.x-b.size//2), int(b.y-b.size//2), b.size, b.size)
+            if paddle_rect.colliderect(ball_rect):
+                # Actual side collision
+                if (p.player_id == 0 and b.vx < 0) or (p.player_id == 1 and b.vx > 0):
+                    # Sound/particle
+                    ResourceManager.play_sound("hit_paddle", 0.74)
+                    b.trigger_particle_effect(pool, is_burst=True)
+                    # Calculate spin
+                    collide_norm = (1 if p.player_id==0 else -1, 0)
+                    b.apply_spin(p, collide_norm, dt)
+                    # Reflection velocity
+                    speed = math.hypot(b.vx, b.vy)
+                    b.vx = -b.vx * 1.04 + (0.31*p.vy)
+                    b.vy += (0.22*p.vy)
+                    speed_boost = 1.0 + min(p.score*0.031, 0.19)
+                    b.vx *= speed_boost
+                    b.vy *= speed_boost
+                    b.x += collide_norm[0] * (p.width//2+BALL_SIZE//2+3)
+                    p.glow_pulse = 1.2
+                    p.last_hit_time = time.time()
+                    b.last_collision_time = time.time()
+                else:
+                    # Not side collision, e.g. grazing top/bottom
+                    b.vy = -b.vy
+                    b.y += (1 if b.vy>0 else -1)*20
+                    ResourceManager.play_sound("hit_wall",0.59)
+        # Top/bot walls
+        if b.y < self.court_rect.top + BALL_SIZE//2:
+            b.vy = abs(b.vy) * 0.97
+            b.y = self.court_rect.top + BALL_SIZE//2
+            ResourceManager.play_sound("hit_wall",0.49)
+            b.trigger_particle_effect(pool)
+        elif b.y > self.court_rect.bottom - BALL_SIZE//2:
+            b.vy = -abs(b.vy) * 0.97
+            b.y = self.court_rect.bottom - BALL_SIZE//2
+            ResourceManager.play_sound("hit_wall",0.49)
+            b.trigger_particle_effect(pool)
+        # Left/right goals
+        if b.x < self.court_rect.left:
+            scored = 1
+        elif b.x > self.court_rect.right:
+            scored = 0
+        if scored is not None:
+            score_cb(scored)
+            ResourceManager.play_sound("score",1.0)
+            b.trigger_particle_effect(pool, is_burst=True)
+
+    def increase_difficulty(self, scale):
+        self.difficulty_scale = clamp(scale,1.0,2.6)
+        for p in self.paddles:
+            pass
+        self.ball.max_speed = 880.0 * self.difficulty_scale
+
+# ========================
+# ScoreBoard UI System
+# ========================
+class ScoreBoard:
     def __init__(self):
-        self.font = load_font(None, 46)
-        self.menu_font = load_font(None, 32)
-        self.active = False
+        self.scores = {0:0, 1:0}
+        self.anim_flip = [0.0, 0.0] # Score animation flip Y
+        self.anim_glow = [0.0, 0.0] # Pulse glow
+        self.font = ResourceManager.get_font("score")
+        self.last_anim = [0, 0]
 
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_p, pygame.K_ESCAPE]:
-                return 'resume'
-            elif event.key == pygame.K_q:
-                return 'quit'
-        elif event.type == pygame.QUIT:
-            return 'quit'
-        return None
+    def update_score(self, scorer):
+        self.scores[scorer] += 1
+        self.anim_flip[scorer] = 1.0
+        self.anim_glow[scorer] = 1.25
+        ResourceManager.play_sound("score_flip",0.91)
+        self.last_anim[scorer] = time.time()
 
-    def draw(self, surf):
-        s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        s.fill((0,0,32,150))
-        surf.blit(s, (0,0))
-        led_text(surf, "PAUSE", self.font, (SCREEN_WIDTH//2-98, SCREEN_HEIGHT//2-88), NEON_PINK, glow=11)
-        led_text(surf, "Press P or ESC to Resume", self.menu_font, (SCREEN_WIDTH//2-192, SCREEN_HEIGHT//2-32), WHITE, glow=3)
-        led_text(surf, "Q to Quit", self.menu_font, (SCREEN_WIDTH//2-62, SCREEN_HEIGHT//2+18), CYAN, glow=1)
+    def animate_score(self, dt):
+        for i in range(2):
+            # Number flip
+            if self.anim_flip[i]>0.01:
+                self.anim_flip[i] -= dt*2.69
+                self.anim_flip[i] = max(0.0,self.anim_flip[i])
+            # Pulse glow
+            if self.anim_glow[i]>0.01:
+                self.anim_glow[i] -= dt*1.78
+                self.anim_glow[i] = max(0.0,self.anim_glow[i])
 
-# Victory & Stats Screen
-class VictoryScreen:
-    def __init__(self, winner_name, stats, font, led_font):
-        self.winner_name = winner_name
-        self.stats = stats
-        self.font = font
-        self.led_font = led_font
-        self.menu_font = load_font(None, 32)
-        self.anim_phase = 0
-        self.active = True
+    def render(self, surface):
+        score_pad = 239
+        for i in range(2):
+            x = SCREEN_WIDTH//2 + (-score_pad if i==0 else score_pad)
+            y = 78
+            num = self.scores[i]
+            # LED-style animated flip effect
+            flip = self.anim_flip[i]
+            scale_y = 1.0 + flip*0.61
+            font_size = int(86 * scale_y)
+            font = ResourceManager.get_font("score")
+            score_str = str(num)
+            text_surf = font.render(score_str, True, NEON_CYAN if i==0 else NEON_MAGENTA)
+            color_glow = color_lerp(LED_GREEN if num==MAX_SCORE else NEON_CYAN if i==0 else NEON_MAGENTA,NEON_WHITE, 0.27)
+            # LED Glow/Pulse
+            for j in range(4):
+                alpha = clamp(150-j*29 + int(220*self.anim_glow[i]),0,255)
+                glow_surf = pygame.Surface((text_surf.get_width()+14,text_surf.get_height()+14), pygame.SRCALPHA)
+                pygame.gfxdraw.box(glow_surf,glow_surf.get_rect(), (*color_glow, alpha))
+                surface.blit(glow_surf, (x-7,y-7), special_flags=pygame.BLEND_ADD)
+            # Main Score
+            surface.blit(text_surf,(x, y))
+        # Center LED separator
+        sep_rect = pygame.Rect(SCREEN_WIDTH//2-9,76,18, 46)
+        pygame.draw.rect(surface, LED_GREEN, sep_rect, border_radius=7)
 
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_r]:
-                return 'replay'
-            elif event.key in [pygame.K_ESCAPE, pygame.K_q]:
-                return 'quit'
-        elif event.type == pygame.QUIT:
-            return 'quit'
-        return None
+    def reset(self):
+        self.scores = {0:0, 1:0}
+        self.anim_flip = [0.0, 0.0]
+        self.anim_glow = [0.0, 0.0]
 
-    def draw(self, surf):
-        surf.fill(DARK_BLUE)
-        grad = gradient_surface(SCREEN_WIDTH, SCREEN_HEIGHT, (32,50,125), (8,10,32), animated_offset=self.anim_phase*60)
-        surf.blit(grad, (0,0))
-        led_text(surf, "WINNER:", self.font, (SCREEN_WIDTH//2-68, 92), NEON_PINK, glow=9)
-        led_text(surf, self.winner_name, self.led_font, (SCREEN_WIDTH//2-160, 162), CYAN, glow=12)
-        led_text(surf, "Stats:", self.menu_font, (SCREEN_WIDTH//2-48, 262), WHITE, glow=3)
-        stat_font = load_font(None, 27)
-        for i, (k, v) in enumerate(self.stats.items()):
-            led_text(surf, f"{k}: {v}", stat_font, (SCREEN_WIDTH//2-120, 310+i*32), WHITE, glow=2)
-        led_text(surf, "R: Replay        Q: Quit", self.menu_font, (SCREEN_WIDTH//2-150, SCREEN_HEIGHT-85), MAGENTA, glow=6)
+# =========================
+# Game State Management
+# =========================
+class GameState:
+    MENU, SERVE, PLAY, SCORE, VICTORY, PAUSE = 'MENU','SERVE','PLAY','SCORE','VICTORY','PAUSE'
+    def __init__(self):
+        self.current_state = self.MENU
+        self.transition_time = 0.0
+        self.animation = 0.0 # Sweep
+        self.entry_time = time.time()
+        self.next_state = self.MENU
+        self.transitioning = False
+        self.victory_player = None
 
-# Main Game Loop & State Manager
-class PongGame:
-    def __init__(self, screen):
-        self.screen = screen
+    def transition(self, state):
+        self.next_state = state
+        self.transitioning = True
+        self.transition_time = 0.0
+        self.animation = 0.0
+
+    def update(self, dt):
+        if self.transitioning:
+            self.transition_time += dt
+            if self.transition_time >= 0.32:
+                self.current_state = self.next_state
+                self.transitioning = False
+                self.entry_time = time.time()
+                self.animation = 0.0
+            else:
+                self.animation = ease_out_quad(clamp(self.transition_time/0.32,0,1))
+
+    def in_state(self, state):
+        return self.current_state == state
+
+    def show_victory(self, player):
+        self.victory_player = player
+        self.current_state = self.VICTORY
+        self.transition_time = 0.0
+        self.animation = 0.0
+
+# =========================
+# Menu System / Pause
+# =========================
+class MenuSystem:
+    def __init__(self):
+        self.showing = True
+        self.selected = 0
+        self.options = ["Start Game", "Game Modes", "Options", "Exit"]
+        self.font = ResourceManager.get_font("menu")
+        self.last_input_time = time.time()
+        self.anim = 0.0
+        self.input_blocked = False
+
+    def show_menu(self):
+        self.showing = True
+        self.selected = 0
+        self.anim = 0.0
+        self.input_blocked = False
+
+    def handle_selection(self, dir):
+        if self.input_blocked:
+            return
+        self.selected = clamp(self.selected+dir,0,len(self.options)-1)
+        self.last_input_time=time.time()
+        ResourceManager.play_sound("menu_beep",0.66)
+        self.anim = 0.19
+
+    def confirm(self):
+        ResourceManager.play_sound("menu_confirm",0.82)
+        self.input_blocked = True
+        self.anim = 0.29
+
+    def render(self, surface):
+        # BG glass
+        menu_rect = pygame.Rect(SCREEN_WIDTH//2-256, SCREEN_HEIGHT//2-164, 512, 372)
+        glass_surf = pygame.Surface(menu_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(glass_surf,(40,44,76,110),glass_surf.get_rect(),border_radius=24)
+        surface.blit(glass_surf,menu_rect.topleft)
+        # Neon border
+        for i in range(3):
+            border_col = color_lerp(NEON_CYAN,NEON_MAGENTA,i/(3-1))
+            pygame.draw.rect(surface,border_col,menu_rect.inflate(i*10,i*7),4, border_radius=28)
+        # Logo
+        font_logo = ResourceManager.get_font("menu")
+        logo_surf = font_logo.render("PONG NEON",True,NEON_CYAN)
+        surface.blit(logo_surf,(SCREEN_WIDTH//2-logo_surf.get_width()//2,menu_rect.top+38))
+        # Options
+        opt_y = menu_rect.top+120
+        for i,opt in enumerate(self.options):
+            c = NEON_CYAN if i%2==0 else NEON_MAGENTA
+            glow = 1.8 if self.selected==i else (0.72 if self.anim>0 and self.selected==i else 0.0)
+            font = ResourceManager.get_font("menu")
+            surf_opt = font.render(opt,True,c)
+            # Glow simulation
+            if glow>0.05:
+                for j in range(4):
+                    opt_glow = pygame.Surface(surf_opt.get_size(),pygame.SRCALPHA)
+                    pygame.gfxdraw.box(opt_glow,opt_glow.get_rect(),(c[0],c[1],c[2],88+j*18))
+                    surface.blit(opt_glow,(SCREEN_WIDTH//2-surf_opt.get_width()//2,opt_y+i*46-j*2),special_flags=pygame.BLEND_ADD)
+            surface.blit(surf_opt,(SCREEN_WIDTH//2-surf_opt.get_width()//2,opt_y+i*46))
+        # Footer / last stat
+        font_footer = ResourceManager.get_font("hud")
+        ft = font_footer.render("v1.0 by NeonArc",True,PALE_GREY)
+        surface.blit(ft,(SCREEN_WIDTH//2-ft.get_width()//2,menu_rect.bottom-36))
+
+# =========================
+# Rendering System
+# =========================
+class RenderingSystem:
+    def __init__(self, paddles, ball, particle_pool, scoreboard, game_state):
+        self.paddles = paddles
+        self.ball = ball
+        self.particle_pool = particle_pool
+        self.scoreboard = scoreboard
+        self.game_state = game_state
+        self.bg_anim_phase = 0.0
+        self.flash_alpha = 0.0
+        self.victory_flash = 0.0
+        self.ambient_particles = ParticlePool(36)
+        self.last_score_flash = 0.0
+
+    def draw_background(self, surface, dt):
+        # Animated gradient diagonal
+        self.bg_anim_phase = (self.bg_anim_phase + dt*0.06) % 1.0
+        grad = pygame.Surface((SCREEN_WIDTH,SCREEN_HEIGHT))
+        for i in range(SCREEN_HEIGHT):
+            t = (i/SCREEN_HEIGHT + self.bg_anim_phase*0.9) % 1.0
+            if i<(SCREEN_HEIGHT//2):
+                c = color_lerp(BG_GRAD_TOP,BG_GRAD_MID,min(1, t*1.2))
+            else:
+                c = color_lerp(BG_GRAD_MID,BG_GRAD_BOT,min(1,(t-0.24)*1.2))
+            pygame.gfxdraw.hline(grad,0,SCREEN_WIDTH-1,i,c)
+        surface.blit(grad,(0,0))
+        # Floating ambient particles
+        for j in range(36):
+            ap = self.ambient_particles.pool[j]
+            if not ap.active or random.random()>0.012:
+                ap.spawn(
+                    random.randint(64,SCREEN_WIDTH-82),
+                    random.randint(44,SCREEN_HEIGHT-44),
+                    random.uniform(-6.5,7.7),
+                    random.uniform(-4.5,6.7),
+                    random.choice([NEON_CYAN,NEON_MAGENTA,SOFT_PURPLE,NEON_WHITE]),
+                    random.randint(8,14),random.uniform(0.19,0.31),random.uniform(0.08,0.38),ptype="trail")
+        self.ambient_particles.update(dt)
+        self.ambient_particles.render(surface)
+
+    def draw_court(self, surface, dt):
+        # Neon court lines
+        neon_lines = [
+            (PADDLE_OFFSET,12,SCREEN_WIDTH-PADDLE_OFFSET,12),
+            (PADDLE_OFFSET,SCREEN_HEIGHT-12,SCREEN_WIDTH-PADDLE_OFFSET,SCREEN_HEIGHT-12),
+            (PADDLE_OFFSET,12,PADDLE_OFFSET,SCREEN_HEIGHT-12),
+            (SCREEN_WIDTH-PADDLE_OFFSET,12,SCREEN_WIDTH-PADDLE_OFFSET,SCREEN_HEIGHT-12)
+        ]
+        for i,(x1,y1,x2,y2) in enumerate(neon_lines):
+            col = NEON_WHITE if i>1 else (NEON_CYAN if i==0 else NEON_MAGENTA)
+            pygame.gfxdraw.line(surface,x1,y1,x2,y2,col)
+            for g in range(4):
+                glow = pygame.Surface((abs(x2-x1)+14,abs(y2-y1)+14),pygame.SRCALPHA)
+                pygame.draw.line(glow,(col[0],col[1],col[2],85-g*17),
+                (7,7),(abs(x2-x1)+7,abs(y2-y1)+7),max(4-g*2,1))
+                surface.blit(glow, (min(x1,x2)-7,min(y1,y2)-7), special_flags=pygame.BLEND_ADD)
+        # Neon corners (pulse anim)
+        pulse = math.sin(time.time()*2.1)*0.5+0.5
+        for pt in [(PADDLE_OFFSET,12),(SCREEN_WIDTH-PADDLE_OFFSET,12),(PADDLE_OFFSET,SCREEN_HEIGHT-12),(SCREEN_WIDTH-PADDLE_OFFSET,SCREEN_HEIGHT-12)]:
+            pygame.gfxdraw.filled_circle(surface,pt[0],pt[1],14,color_lerp(NEON_MAGENTA,NEON_CYAN,pulse))
+            pygame.gfxdraw.aacircle(surface,pt[0],pt[1],19,color_lerp(NEON_CYAN,NEON_WHITE,pulse))
+
+    def draw_particles(self, surface):
+        self.particle_pool.render(surface)
+
+    def draw_all(self, surface, dt):
+        self.draw_background(surface,dt)
+        self.draw_court(surface,dt)
+        self.draw_particles(surface)
+        # Paddles
+        for p in self.paddles:
+            pulse_flash = max(0.0,min(1.0,(1.2-p.glow_pulse)))
+            p.render(surface,pulse_flash)
+            p.glow_pulse = max(0.0,p.glow_pulse-dt*2.1)
+        # Ball
+        self.ball.render(surface,flash_f=1.0 if time.time()-self.ball.last_collision_time<0.16 else 0.0)
+        # Scoreboard
+        self.scoreboard.render(surface)
+        # Screen flash on score
+        if self.flash_alpha>0.02:
+            flash_surf = pygame.Surface((SCREEN_WIDTH,SCREEN_HEIGHT),pygame.SRCALPHA)
+            pygame.gfxdraw.box(flash_surf,flash_surf.get_rect(),(255,255,255,int(255*self.flash_alpha)))
+            surface.blit(flash_surf,(0,0))
+            self.flash_alpha = max(0.0,self.flash_alpha-dt*4.4)
+        # Victory flash (magenta/cyan sweep)
+        if self.victory_flash>0.01:
+            v_surf = pygame.Surface((SCREEN_WIDTH,SCREEN_HEIGHT),pygame.SRCALPHA)
+            col = color_lerp(NEON_MAGENTA,SOFT_PURPLE,self.victory_flash)
+            pygame.gfxdraw.box(v_surf,v_surf.get_rect(),(*col,int(128*self.victory_flash)))
+            surface.blit(v_surf,(0,0))
+            self.victory_flash = max(0.0,self.victory_flash-dt*2.7)
+
+# =========================
+# Main Game
+# =========================
+class Game:
+    def __init__(self):
+        pygame.init()
+        pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT), pygame.SCALED|pygame.DOUBLEBUF)
+        pygame.display.set_caption("Pong Neon Edition")
+        ResourceManager.init()
+        if ResourceManager.music_loaded:
+            pygame.mixer.music.set_volume(0.72)
+            pygame.mixer.music.play(-1)
         self.clock = pygame.time.Clock()
-        # Fonts
-        self.led_font = load_font(LED_FONT_PATH, LED_FONT_SIZE)
-        self.font = load_font(None, 44)
-        # State
-        self.state = 'menu'
-        self.game_mode_idx = 0
-        self.court = NeonCourt()
-        self.particles = ParticleSystem()
-        self.pause_menu = PauseMenu()
-        self.menu = Menu(GAME_MODES)
-        self.victory_screen = None
-        self.screen_flash_t = 0
-        self.last_flash_col = DARK_BLUE
-        self.player1 = None
-        self.player2 = None
-        self.ball = None
-        self.scoreboard = None
-        self.mode_features = {'spin': False}
-        self.stats = {}
+        self.dt = 0.016
+        # Entities
+        self.paddles = [
+            Paddle(PADDLE_OFFSET-18, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, NEON_CYAN, 0, "keyboard"),
+            Paddle(SCREEN_WIDTH-PADDLE_OFFSET-8-PADDLE_WIDTH, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, NEON_MAGENTA, 1, "ai")
+        ]
+        self.ball = Ball(SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
+        self.ball.reset(serve_left=random.choice([True,False]),speed_scale=1.0,dramatic=True)
+        self.particle_pool = ParticlePool(NEON_PARTICLE_POOL)
+        self.scoreboard = ScoreBoard()
+        self.game_state = GameState()
+        self.menu_system = MenuSystem()
+        self.renderer = RenderingSystem(self.paddles, self.ball, self.particle_pool, self.scoreboard, self.game_state)
+        self.physics_engine = PhysicsEngine(self.paddles, self.ball)
+        self.paused = False
+        self.game_mode = "Classic"
+        self.winner_stats = {"rallies":0, "fastest_serve":0.0, "winner":""}
+        self.last_victory_time = 0.0
+        self.last_score_delta_scale = 1.0
 
-    def set_players(self, mode_idx):
-        if mode_idx == 0:
-            # Classic: vs AI
-            self.player1 = Paddle(76, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, CYAN, name="PLAYER", is_ai=False)
-            self.player2 = Paddle(SCREEN_WIDTH-76-PADDLE_WIDTH, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, MAGENTA, name="NEON AI", is_ai=True)
-            self.mode_features = {'spin': False}
-        elif mode_idx == 1:
-            # Pro: Faster ball, smarter AI
-            self.player1 = Paddle(76, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, CYAN, name="PLAYER", is_ai=False)
-            self.player2 = Paddle(SCREEN_WIDTH-76-PADDLE_WIDTH, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, MAGENTA, name="NEON PRO AI", is_ai=True)
-            self.mode_features = {'spin': False}
-        elif mode_idx == 2:
-            # Spin Master: 2 Player, spin physics
-            self.player1 = Paddle(76, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, CYAN, name="P1", is_ai=False)
-            self.player2 = Paddle(SCREEN_WIDTH-76-PADDLE_WIDTH, SCREEN_HEIGHT//2-PADDLE_HEIGHT//2, PADDLE_WIDTH, PADDLE_HEIGHT, MAGENTA, name="P2", is_ai=False)
-            self.mode_features = {'spin': True}
-        else:
-            raise GameException("Invalid game mode")
-        self.ball = Ball(SCREEN_WIDTH//2, SCREEN_HEIGHT//2, BALL_RADIUS, WHITE)
-        self.scoreboard = Scoreboard(self.font, self.led_font, self.player1, self.player2)
-        self.screen_flash_t = 0
-        self.stats = {"Total Hits": 0, "Max Ball Speed": 0}
-
-    def handle_menu(self):
-        for event in pygame.event.get():
-            action = self.menu.handle_event(event)
-            if action == 'select':
-                self.state = 'game'
-                self.game_mode_idx = self.menu.selected
-                self.set_players(self.game_mode_idx)
-                self.ball.serve_reset(direction=random.choice((1,-1)))
-            elif action == 'quit':
-                pygame.quit()
-                sys.exit()
-
-    def handle_pause(self):
-        for event in pygame.event.get():
-            action = self.pause_menu.handle_event(event)
-            if action == 'resume':
-                self.state = 'game'
-                self.pause_menu.active = False
-            elif action == 'quit':
-                pygame.quit()
-                sys.exit()
-
-    def handle_victory(self):
-        for event in pygame.event.get():
-            action = self.victory_screen.handle_event(event)
-            if action == 'replay':
-                self.state = 'menu'
-                self.victory_screen.active = False
-                self.menu.active = True
-            elif action == 'quit':
-                pygame.quit()
-                sys.exit()
-
-    def handle_game(self):
+    def handle_input(self):
+        keys = pygame.key.get_pressed()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit()
+                sys.exit(0)
             elif event.type == pygame.KEYDOWN:
-                # Pause
-                if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
-                    self.state = 'pause'
-                    self.pause_menu.active = True
+                if self.game_state.in_state(GameState.MENU):
+                    if event.key == pygame.K_UP:
+                        self.menu_system.handle_selection(-1)
+                    elif event.key == pygame.K_DOWN:
+                        self.menu_system.handle_selection(1)
+                    elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                        self.menu_system.confirm()
+                        if self.menu_system.selected==0:
+                            self.game_state.transition(GameState.SERVE)
+                        elif self.menu_system.selected==3:
+                            pygame.quit()
+                            sys.exit(0)
+                        else:
+                            pass # TODO: Options, Modes
+                elif self.game_state.in_state(GameState.PLAY) or self.game_state.in_state(GameState.SERVE):
+                    if event.key == pygame.K_p:
+                        ResourceManager.play_sound("pause_in",0.83)
+                        self.game_state.transition(GameState.PAUSE)
+                elif self.game_state.in_state(GameState.PAUSE):
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_p:
+                        ResourceManager.play_sound("pause_out",0.81)
+                        self.game_state.transition(GameState.PLAY)
+                elif self.game_state.in_state(GameState.VICTORY):
+                    if event.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                        self.scoreboard.reset()
+                        for p in self.paddles:
+                            p.score = 0
+                            p.y = SCREEN_HEIGHT//2-PADDLE_HEIGHT//2
+                        self.ball.reset(serve_left=random.choice([True,False]),speed_scale=1.0,dramatic=True)
+                        self.game_state.transition(GameState.MENU)
+                # Always allow escape
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit(0)
 
-        keys = pygame.key.get_pressed()
-
-        # Paddle controls
-        # Left Paddle: Up/Down or W/S
-        if not self.player1.is_ai:
-            dy = 0
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                dy = -PADDLE_SPEED
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                dy = PADDLE_SPEED
-            self.player1.move(dy)
+        if self.game_state.in_state(GameState.PLAY) or self.game_state.in_state(GameState.SERVE):
+            # Paddle control - Player 1 (left, keyboard)
+            dir = 0
+            if keys[pygame.K_w]:
+                dir = -1
+            elif keys[pygame.K_s]:
+                dir = 1
+            self.paddles[0].move(dir,self.dt,self.physics_engine.difficulty_scale)
         else:
-            difficulty = 1 if self.game_mode_idx == 0 else 2
-            self.player1.update_ai(self.ball, difficulty)
+            # Block paddle
+            self.paddles[0].vy = 0
 
-        # Right Paddle: Two player mode (Spin Master) -> I/K
-        if not self.player2.is_ai:
-            dy = 0
-            if keys[pygame.K_i]:
-                dy = -PADDLE_SPEED
-            if keys[pygame.K_k]:
-                dy = PADDLE_SPEED
-            self.player2.move(dy)
-        else:
-            difficulty = GAME_MODES[self.game_mode_idx]['ai_level']
-            self.player2.update_ai(self.ball, difficulty)
+    def update(self):
+        try:
+            self.dt = self.clock.tick(FPS) / 1000.0
+            self.game_state.update(self.dt)
+            self.menu_system.anim = max(0.0,self.menu_system.anim-self.dt*2.8)
+            # Victory flash decay
+            if self.renderer.victory_flash>0.02:
+                self.renderer.victory_flash = max(0.0,self.renderer.victory_flash-self.dt*2.7)
+            # Animate scores
+            self.scoreboard.animate_score(self.dt)
+            # Game State Step
+            if self.game_state.transitioning:
+                return # Wait transition
+            if self.game_state.in_state(GameState.MENU):
+                pass
+            elif self.game_state.in_state(GameState.SERVE):
+                self.ball.serve_animation(self.dt)
+                if self.ball.serve_time>=SERVE_ANIM_TIME:
+                    self.game_state.transition(GameState.PLAY)
+            elif self.game_state.in_state(GameState.PLAY):
+                # AI control (Paddle 2)
+                self.paddles[1].ai_control(self.ball,self.dt * self.physics_engine.difficulty_scale)
+                # Physics & score
+                def score_callback(player_id):
+                    self.paddles[player_id].score += 1
+                    self.scoreboard.update_score(player_id)
+                    self.renderer.flash_alpha = 0.24
+                    self.last_score_delta_scale = 1.0 + 0.13*(self.paddles[0].score+self.paddles[1].score)
+                    # Progressive difficulty
+                    self.physics_engine.increase_difficulty(1.0 + 0.08*(self.paddles[0].score+self.paddles[1].score))
+                    # Serve reset
+                    self.ball.reset(serve_left=player_id==1,speed_scale=self.physics_engine.difficulty_scale,dramatic=True)
+                    self.game_state.transition(GameState.SERVE)
+                    # Winner?
+                    if self.paddles[player_id].score>=MAX_SCORE:
+                        self.game_state.show_victory(player_id)
+                        ResourceManager.play_sound("win",1.0)
+                        self.renderer.victory_flash = 1.0
+                        self.winner_stats["winner"] = self.paddles[player_id].name
+                        self.last_victory_time = time.time()
+                # Physics
+                self.physics_engine.update(self.dt,self.particle_pool,score_cb=score_callback)
+                self.particle_pool.update(self.dt)
+            elif self.game_state.in_state(GameState.SCORE):
+                pass
+            elif self.game_state.in_state(GameState.VICTORY):
+                # Win screen animation
+                if time.time()-self.last_victory_time>2.4:
+                    pass
+            elif self.game_state.in_state(GameState.PAUSE):
+                pass
+        except Exception as e:
+            print("Game Update Exception: ",str(e))
+            traceback.print_exc()
 
-    def update(self, dt):
-        if self.state == 'game':
-            paddles = [self.player1, self.player2]
-            self.ball.update(paddles, self.particles, self.mode_features)
-            # Ball out of bounds (left/right) -> Score
-            if self.ball.x < 0 or self.ball.x > SCREEN_WIDTH:
-                scorer = 1 if self.ball.x > SCREEN_WIDTH else 0
-                if scorer == 0:
-                    self.player1.score += 1
-                    self.scoreboard.flash_score(0)
-                else:
-                    self.player2.score += 1
-                    self.scoreboard.flash_score(1)
-                self.screen_flash_t = 0.36
-                self.last_flash_col = CYAN if scorer == 0 else MAGENTA
-                # Ball reset, serve animation
-                self.ball.serve_reset(direction=(-1 if scorer==0 else 1))
-                # Stats
-                self.stats["Max Ball Speed"] = max(self.stats.get("Max Ball Speed",0), int(self.ball.speed*10))
-            # Stats: Count paddle hits
-            self.stats["Total Hits"] = self.stats.get("Total Hits",0)
-
-            # Victory Condition
-            if self.player1.score >= WIN_SCORE or self.player2.score >= WIN_SCORE:
-                winner = self.player1.name if self.player1.score >= WIN_SCORE else self.player2.name
-                self.victory_screen = VictoryScreen(winner, self.stats, self.font, self.led_font)
-                self.state = 'victory'
-            self.scoreboard.update(dt)
-            self.particles.update()
-            # Update progressive difficulty: Ball speed (more glow)
-            if abs(self.ball.vx) > INIT_BALL_SPEED+3:
-                self.ball.color = NEON_PINK if self.ball.vx > 0 else NEON_BLUE
-            else:
-                self.ball.color = WHITE
-        elif self.state == 'pause':
-            pass  # Pause logic handled elsewhere
-        elif self.state == 'menu':
-            pass  # Menu logic handled elsewhere
-        elif self.state == 'victory':
-            if self.victory_screen:
-                self.victory_screen.anim_phase += dt
-
-    def draw(self):
-        # Animated background gradient
-        frame_time = pygame.time.get_ticks()/1000.0
-        grad = gradient_surface(SCREEN_WIDTH, SCREEN_HEIGHT, (18,26,56), (8,16,44), animated_offset=int(120*math.sin(frame_time*0.2)))
-        self.screen.blit(grad, (0,0))
-
-        if self.state == 'menu':
-            self.menu.draw(self.screen, frame_time)
-        elif self.state == 'game':
-            # Game background elements
-            self.court.draw(self.screen)
-            # Ball trail and collision particle effects
-            self.particles.draw(self.screen)
-            self.player1.draw(self.screen)
-            self.player2.draw(self.screen)
-            self.ball.draw(self.screen)
-            self.scoreboard.draw(self.screen)
-            # HUD
-            hud_font = load_font(None, 22)
-            led_text(self.screen, f"{GAME_MODES[self.game_mode_idx]['name']}   First to {WIN_SCORE}", hud_font, (SCREEN_WIDTH//2-170, 26), WHITE, glow=2)
-            # Screen flash
-            if self.screen_flash_t > 0:
-                flash_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                alpha = int(255 * self.screen_flash_t / 0.36)
-                flash_surf.fill((*self.last_flash_col, alpha))
-                self.screen.blit(flash_surf, (0,0))
-                self.screen_flash_t -= 1.0/FPS
-        elif self.state == 'pause':
-            self.court.draw(self.screen)
-            self.particles.draw(self.screen)
-            self.player1.draw(self.screen)
-            self.player2.draw(self.screen)
-            self.ball.draw(self.screen)
-            self.scoreboard.draw(self.screen)
-            self.pause_menu.draw(self.screen)
-        elif self.state == 'victory' and self.victory_screen:
-            self.victory_screen.draw(self.screen)
-        # Fade in/out transitions could be added here
+    def render(self):
+        try:
+            self.screen.fill(DARK_BLUE)
+            self.renderer.draw_all(self.screen, self.dt)
+            # Menus/UI
+            if self.game_state.in_state(GameState.MENU):
+                self.menu_system.render(self.screen)
+            if self.game_state.in_state(GameState.PAUSE):
+                # Pause overlay
+                surf = pygame.Surface((SCREEN_WIDTH,SCREEN_HEIGHT),pygame.SRCALPHA)
+                pygame.draw.rect(surf,(38,44,58,176),surf.get_rect(),border_radius=20)
+                self.screen.blit(surf,(0,0))
+                font = ResourceManager.get_font("menu")
+                txt = font.render("PAUSED",True,LED_GREEN)
+                self.screen.blit(txt,(SCREEN_WIDTH//2-txt.get_width()//2,SCREEN_HEIGHT//2-44))
+                btn_font = ResourceManager.get_font("hud")
+                resume = btn_font.render("Press Esc / P to Resume",True,NEON_CYAN)
+                self.screen.blit(resume,(SCREEN_WIDTH//2-resume.get_width()//2,SCREEN_HEIGHT//2+22))
+            if self.game_state.in_state(GameState.VICTORY):
+                # Victory screen overlay
+                surf = pygame.Surface((SCREEN_WIDTH,SCREEN_HEIGHT),pygame.SRCALPHA)
+                pygame.draw.rect(surf,(112,21,252,132),surf.get_rect(),border_radius=20)
+                self.screen.blit(surf,(0,0))
+                font = ResourceManager.get_font("score")
+                txt = font.render("WINNER!",True,LED_GREEN)
+                self.screen.blit(txt,(SCREEN_WIDTH//2-txt.get_width()//2,SCREEN_HEIGHT//2-98))
+                winner_font = ResourceManager.get_font("menu")
+                winner_txt = winner_font.render(self.paddles[self.game_state.victory_player].name,True,(LED_GREEN if self.game_state.victory_player==0 else NEON_MAGENTA))
+                self.screen.blit(winner_txt,(SCREEN_WIDTH//2-winner_txt.get_width()//2,SCREEN_HEIGHT//2-38))
+                stats = ResourceManager.get_font("hud").render(f"Score: {self.paddles[self.game_state.victory_player].score}",True,NEON_CYAN if self.game_state.victory_player==0 else NEON_MAGENTA)
+                self.screen.blit(stats,(SCREEN_WIDTH//2-stats.get_width()//2,SCREEN_HEIGHT//2+22))
+                replay = winner_font.render("Press Enter/Space to Replay",True,NEON_WHITE)
+                self.screen.blit(replay,(SCREEN_WIDTH//2-replay.get_width()//2,SCREEN_HEIGHT//2+66))
+        except Exception as e:
+            print("Game Render Exception: ",str(e))
+            traceback.print_exc()
+        pygame.display.flip()
 
     def run(self):
-        dt = 1.0 / FPS
         while True:
-            if self.state == 'menu':
-                self.handle_menu()
-            elif self.state == 'game':
-                self.handle_game()
-            elif self.state == 'pause':
-                self.handle_pause()
-            elif self.state == 'victory' and self.victory_screen:
-                self.handle_victory()
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-            self.clock.tick(FPS)
+            self.handle_input()
+            self.update()
+            self.render()
 
+# =========================
 def main():
     try:
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Neon Pong - Retro Futuristic")
-        game = PongGame(screen)
+        game = Game()
         game.run()
     except Exception as e:
-        print("An error occurred:", e)
-        pygame.quit()
-        sys.exit()
+        print("Main Exception:",str(e))
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
